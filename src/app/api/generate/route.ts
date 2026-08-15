@@ -24,6 +24,7 @@ export async function POST(req: Request) {
 
     const jobIds = await createGenerationBatch({
       userId: user.id,
+      actorUserId: user.impersonatedBy,
       prompt: body.prompt,
       referenceImageKeys: body.referenceImageKeys,
       endFrameImageKey: body.endFrameImageKey,

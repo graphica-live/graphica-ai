@@ -14,5 +14,5 @@ export async function requireAdmin() {
 export async function requireUser() {
   const session = await getServerSession(authOptions);
   if (!session?.user) throw new UnauthorizedError("ログインが必要です");
-  return session.user;
+  return { ...session.user, impersonatedBy: session.impersonatedBy };
 }

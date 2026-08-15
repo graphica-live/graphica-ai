@@ -7,6 +7,7 @@ declare module "next-auth" {
       id: string;
       role: Role;
     } & DefaultSession["user"];
+    impersonatedBy?: string;
   }
 }
 
