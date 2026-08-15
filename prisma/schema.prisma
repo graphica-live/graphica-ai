@@ -1,0 +1,176 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STAFF
+  ADMIN
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
+enum CreditTxType {
+  GRANT
+  CONSUMPTION
+  REFUND
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          Role      @default(STAFF)
+  isActive      Boolean   @default(true)
+  creditBalance Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts               Account[]
+  sessions               Session[]
+  generationJobs         GenerationJob[]     @relation("OwnerJobs")
+  actedGenerationJobs    GenerationJob[]     @relation("ActorJobs")
+  creditTxAsOwner        CreditTransaction[] @relation("OwnerTx")
+  creditTxAsActor        CreditTransaction[] @relation("ActorTx")
+  impersonationsIssued   Impersonation[]     @relation("IssuedBy")
+  impersonationsAsStaff  Impersonation[]     @relation("StaffTarget")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// 単価テーブル: provider(プロバイダ) x resolution x hasVideoInput -> 秒あたりクレジット(円)
+model PricingRule {
+  id              String   @id @default(cuid())
+  provider        String   @default("dreamina")
+  resolution      String
+  hasVideoInput   Boolean  @default(false)
+  creditPerSecond Int
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([provider, resolution, hasVideoInput])
+}
+
+model GenerationJob {
+  id          String @id @default(cuid())
+  userId      String
+  actorUserId String?
+
+  batchId    String
+  batchIndex Int    @default(0)
+  batchSize  Int    @default(1)
+
+  status        JobStatus @default(PENDING)
+  provider      String    @default("dreamina")
+  providerJobId String?
+  providerError String?   @db.Text
+
+  prompt             String   @db.Text
+  referenceImageKeys String[]
+  endFrameImageKey   String?
+  resolution         String
+  durationSeconds    Int
+  aspectRatio        String
+
+  creditCost Int
+
+  videoObjectKey     String?
+  thumbnailObjectKey String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  owner    User                @relation("OwnerJobs", fields: [userId], references: [id], onDelete: Cascade)
+  actor    User?               @relation("ActorJobs", fields: [actorUserId], references: [id])
+  creditTx CreditTransaction[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@index([batchId])
+}
+
+model CreditTransaction {
+  id           String       @id @default(cuid())
+  type         CreditTxType
+  amount       Int
+  balanceAfter Int
+  note         String?
+
+  userId          String
+  actorUserId     String?
+  generationJobId String?
+
+  createdAt DateTime @default(now())
+
+  owner         User           @relation("OwnerTx", fields: [userId], references: [id], onDelete: Cascade)
+  actor         User?          @relation("ActorTx", fields: [actorUserId], references: [id])
+  generationJob GenerationJob? @relation(fields: [generationJobId], references: [id])
+
+  @@index([userId, type, createdAt])
+}
+
+// なりすまし代理ログイン用ワンタイムトークン
+model Impersonation {
+  id             String    @id @default(cuid())
+  tokenHash      String    @unique
+  staffUserId    String
+  issuedByUserId String
+  expiresAt      DateTime
+  usedAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  staff    User @relation("StaffTarget", fields: [staffUserId], references: [id], onDelete: Cascade)
+  issuedBy User @relation("IssuedBy", fields: [issuedByUserId], references: [id])
+
+  @@index([staffUserId])
+}
