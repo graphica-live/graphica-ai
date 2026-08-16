@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { ImageUploadField, type UploadedImage } from "./ImageUploadField";
 import { CostEstimate } from "./CostEstimate";
 import { JobStatusCard, type JobStatus } from "./JobStatusCard";
+import { estimateSeedanceCostJpy } from "@/lib/credits/seedance-cost-estimate";
 
 const RESOLUTIONS = ["480p", "720p", "1080p"] as const;
 const DURATIONS = [5, 10, 15, 20, 30] as const;
@@ -82,6 +83,11 @@ export function GenerationForm() {
 
   const totalCost = costPerVideo !== null ? costPerVideo * batchSize : null;
   const insufficient = totalCost !== null && balance !== null && totalCost > balance;
+
+  const apiCostEstimateJpy = useMemo(() => {
+    const perVideo = estimateSeedanceCostJpy(resolution, durationSeconds);
+    return perVideo === null ? null : perVideo * batchSize;
+  }, [resolution, durationSeconds, batchSize]);
 
   // 実行中ジョブのステータスをポーリングする
   useEffect(() => {
@@ -214,7 +220,12 @@ export function GenerationForm() {
           />
         </div>
 
-        <CostEstimate cost={totalCost} balance={balance} loading={pricingLoading} />
+        <CostEstimate
+          cost={totalCost}
+          balance={balance}
+          loading={pricingLoading}
+          apiCostEstimateJpy={apiCostEstimateJpy}
+        />
 
         {submitError && (
           <p className="rounded-md bg-red-950 border border-red-800 px-4 py-3 text-sm text-red-300">
