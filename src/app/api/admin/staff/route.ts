@@ -3,8 +3,6 @@ import { z } from "zod";
 import { requireAdmin, ForbiddenError, UnauthorizedError } from "@/lib/admin/guard";
 import { prisma } from "@/lib/prisma";
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL!.toLowerCase();
-
 const createStaffSchema = z.object({
   email: z.string().email(),
 });
@@ -28,7 +26,7 @@ export async function POST(req: Request) {
     const body = createStaffSchema.parse(await req.json());
     const email = body.email.toLowerCase();
 
-    if (email === ADMIN_EMAIL) {
+    if (email === process.env.ADMIN_EMAIL?.toLowerCase()) {
       return NextResponse.json(
         { error: "このメールアドレスは管理者用に予約されています" },
         { status: 400 }

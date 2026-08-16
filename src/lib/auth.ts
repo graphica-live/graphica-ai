@@ -6,7 +6,14 @@ import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "./prisma";
 import type { Role } from "@prisma/client";
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL!.toLowerCase();
+// process.env.ADMIN_EMAILはNext.jsのビルド時(ページデータ収集)にはまだ
+// 注入されていない環境で評価されることがあるため、トップレベルで即時評価せず
+// リクエスト処理時に遅延評価する。
+function getAdminEmail() {
+  const email = process.env.ADMIN_EMAIL;
+  if (!email) throw new Error("ADMIN_EMAIL is not set");
+  return email.toLowerCase();
+}
 
 // 管理者がスタッフとして別窓を開くための、ワンタイム・短命トークンによる代理ログイン。
 // トークンは /api/admin/staff/[id]/impersonate でのみ発行される(要管理者権限)。
@@ -63,7 +70,7 @@ export const authOptions: NextAuthOptions = {
       const email = user.email?.toLowerCase();
       if (!email) return false;
 
-      if (email === ADMIN_EMAIL) {
+      if (email === getAdminEmail()) {
         await prisma.user.upsert({
           where: { email },
           update: { role: "ADMIN" },
