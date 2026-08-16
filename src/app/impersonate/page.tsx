@@ -1,8 +1,8 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
+import { impersonateSignIn } from "@/lib/auth/impersonate-client";
 
 function ImpersonateInner() {
   const params = useSearchParams();
@@ -14,7 +14,9 @@ function ImpersonateInner() {
       setError("トークンが指定されていません");
       return;
     }
-    signIn("impersonate", { token, redirect: true, callbackUrl: "/" });
+    impersonateSignIn(token, "/").then(({ url }) => {
+      window.location.href = url;
+    });
   }, [token]);
 
   return (
