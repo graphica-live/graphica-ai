@@ -4,6 +4,7 @@ import { calculateCost } from "@/lib/credits/pricing";
 import { InsufficientCreditsError } from "@/lib/credits/ledger";
 import { getVideoProvider } from "@/lib/video-provider";
 import { getPresignedDownloadUrl } from "@/lib/storage/storage-service";
+import { referenceImageTag } from "@/lib/generation/mention";
 import { failJob } from "./job-service";
 
 export interface CreateGenerationBatchInput {
@@ -82,6 +83,10 @@ export async function createGenerationBatch(input: CreateGenerationBatchInput) {
   const referenceImageUrls = await Promise.all(
     input.referenceImageKeys.map((key) => getPresignedDownloadUrl(key))
   );
+  const referenceImages = referenceImageUrls.map((url, i) => ({
+    tag: referenceImageTag(i),
+    url,
+  }));
   const endFrameImageUrl = input.endFrameImageKey
     ? await getPresignedDownloadUrl(input.endFrameImageKey)
     : undefined;
@@ -91,7 +96,7 @@ export async function createGenerationBatch(input: CreateGenerationBatchInput) {
       try {
         const { providerJobId } = await provider.submit({
           prompt: input.prompt,
-          referenceImageUrls,
+          referenceImages,
           endFrameImageUrl,
           resolution: input.resolution,
           durationSeconds: input.durationSeconds,
