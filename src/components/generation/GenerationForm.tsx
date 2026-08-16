@@ -6,10 +6,13 @@ import { ImageUploadField, type UploadedImage } from "./ImageUploadField";
 import { CostEstimate } from "./CostEstimate";
 import { JobStatusCard, type JobStatus } from "./JobStatusCard";
 import { estimateSeedanceCostJpy } from "@/lib/credits/seedance-cost-estimate";
+import { RESOLUTIONS, DURATIONS, ASPECT_RATIOS } from "@/lib/generation/options";
 
-const RESOLUTIONS = ["480p", "720p", "1080p"] as const;
-const DURATIONS = [5, 10, 15, 20, 30] as const;
-const ASPECT_RATIOS = ["16:9", "9:16", "1:1", "4:3"] as const;
+interface GenerationOptionLimits {
+  allowedResolutions: string[];
+  allowedDurations: number[];
+  allowedAspectRatios: string[];
+}
 
 interface PricingRule {
   resolution: string;
@@ -34,6 +37,7 @@ export function GenerationForm() {
   const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
   const [balance, setBalance] = useState<number | null>(null);
   const [pricingLoading, setPricingLoading] = useState(true);
+  const [optionLimits, setOptionLimits] = useState<GenerationOptionLimits | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -43,13 +47,42 @@ export function GenerationForm() {
     Promise.all([
       fetch("/api/pricing").then((r) => r.json()),
       fetch("/api/credits/balance").then((r) => r.json()),
+      fetch("/api/generate/options").then((r) => r.json()),
     ])
-      .then(([rules, balanceRes]) => {
+      .then(([rules, balanceRes, limits]) => {
         setPricingRules(rules);
         setBalance(balanceRes.creditBalance);
+        setOptionLimits(limits);
       })
       .finally(() => setPricingLoading(false));
   }, []);
+
+  const allowedResolutions = useMemo(
+    () => RESOLUTIONS.filter((r) => optionLimits?.allowedResolutions.includes(r) ?? true),
+    [optionLimits]
+  );
+  const allowedDurations = useMemo(
+    () => DURATIONS.filter((d) => optionLimits?.allowedDurations.includes(d) ?? true),
+    [optionLimits]
+  );
+  const allowedAspectRatios = useMemo(
+    () => ASPECT_RATIOS.filter((a) => optionLimits?.allowedAspectRatios.includes(a) ?? true),
+    [optionLimits]
+  );
+
+  // 許可設定のロード後、選択中の値が対象外なら許可された先頭の値に補正する
+  useEffect(() => {
+    if (!optionLimits) return;
+    if (allowedResolutions.length > 0 && !allowedResolutions.includes(resolution)) {
+      setResolution(allowedResolutions[0]);
+    }
+    if (allowedDurations.length > 0 && !allowedDurations.includes(durationSeconds)) {
+      setDurationSeconds(allowedDurations[0]);
+    }
+    if (allowedAspectRatios.length > 0 && !allowedAspectRatios.includes(aspectRatio)) {
+      setAspectRatio(allowedAspectRatios[0]);
+    }
+  }, [optionLimits, allowedResolutions, allowedDurations, allowedAspectRatios, resolution, durationSeconds, aspectRatio]);
 
   // 「引用」導線: 過去ジョブの設定をプリフィルする
   useEffect(() => {
@@ -167,7 +200,7 @@ export function GenerationForm() {
               onChange={(e) => setResolution(e.target.value as typeof resolution)}
               className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
             >
-              {RESOLUTIONS.map((r) => (
+              {allowedResolutions.map((r) => (
                 <option key={r} value={r}>
                   {r}
                 </option>
@@ -181,7 +214,7 @@ export function GenerationForm() {
               onChange={(e) => setDurationSeconds(Number(e.target.value) as typeof durationSeconds)}
               className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
             >
-              {DURATIONS.map((d) => (
+              {allowedDurations.map((d) => (
                 <option key={d} value={d}>
                   {d}秒
                 </option>
@@ -195,7 +228,7 @@ export function GenerationForm() {
               onChange={(e) => setAspectRatio(e.target.value as typeof aspectRatio)}
               className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
             >
-              {ASPECT_RATIOS.map((a) => (
+              {allowedAspectRatios.map((a) => (
                 <option key={a} value={a}>
                   {a}
                 </option>

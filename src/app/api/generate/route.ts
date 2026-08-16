@@ -3,9 +3,8 @@ import { z } from "zod";
 import { requireUser, UnauthorizedError } from "@/lib/admin/guard";
 import { InsufficientCreditsError } from "@/lib/credits/ledger";
 import { createGenerationBatch } from "@/lib/jobs/create-generation-batch";
-
-const RESOLUTIONS = ["480p", "720p", "1080p"] as const;
-const ASPECT_RATIOS = ["16:9", "9:16", "1:1", "4:3"] as const;
+import { prisma } from "@/lib/prisma";
+import { RESOLUTIONS, ASPECT_RATIOS } from "@/lib/generation/options";
 
 const requestSchema = z.object({
   prompt: z.string().min(1).max(5000),
@@ -21,6 +20,21 @@ export async function POST(req: Request) {
   try {
     const user = await requireUser();
     const body = requestSchema.parse(await req.json());
+
+    const limits = await prisma.user.findUniqueOrThrow({
+      where: { id: user.id },
+      select: { allowedResolutions: true, allowedDurations: true, allowedAspectRatios: true },
+    });
+    if (
+      !limits.allowedResolutions.includes(body.resolution) ||
+      !limits.allowedDurations.includes(body.durationSeconds) ||
+      !limits.allowedAspectRatios.includes(body.aspectRatio)
+    ) {
+      return NextResponse.json(
+        { error: "選択した設定はこのアカウントでは利用できません" },
+        { status: 403 }
+      );
+    }
 
     const jobIds = await createGenerationBatch({
       userId: user.id,

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CreditGrantForm } from "./CreditGrantForm";
 import { CreditHistoryTable } from "./CreditHistoryTable";
 import { ImpersonateButton } from "./ImpersonateButton";
+import { GenerationLimitsForm } from "./GenerationLimitsForm";
 
 interface Staff {
   id: string;
@@ -11,6 +12,9 @@ interface Staff {
   name: string | null;
   isActive: boolean;
   creditBalance: number;
+  allowedResolutions: string[];
+  allowedDurations: number[];
+  allowedAspectRatios: string[];
 }
 
 export function StaffDetail({ staffId }: { staffId: string }) {
@@ -56,6 +60,17 @@ export function StaffDetail({ staffId }: { staffId: string }) {
       <div>
         <h2 className="mb-3 text-sm font-medium text-neutral-300">クレジット履歴</h2>
         <CreditHistoryTable staffId={staff.id} reloadKey={reloadKey} />
+      </div>
+
+      <div>
+        <h2 className="mb-3 text-sm font-medium text-neutral-300">生成設定の制限</h2>
+        <GenerationLimitsForm
+          staffId={staff.id}
+          allowedResolutions={staff.allowedResolutions}
+          allowedDurations={staff.allowedDurations}
+          allowedAspectRatios={staff.allowedAspectRatios}
+          onSaved={load}
+        />
       </div>
     </div>
   );
