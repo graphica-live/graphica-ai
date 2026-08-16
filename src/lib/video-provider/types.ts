@@ -1,6 +1,12 @@
+export interface ReferenceImage {
+  /** プロンプト内で参照する際のタグ (例: "@image1") */
+  tag: string;
+  url: string;
+}
+
 export interface VideoGenerationRequest {
   prompt: string;
-  referenceImageUrls: string[];
+  referenceImages: ReferenceImage[];
   endFrameImageUrl?: string;
   resolution: string;
   durationSeconds: number;

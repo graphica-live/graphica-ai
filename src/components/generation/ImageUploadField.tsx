@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { referenceImageTag } from "@/lib/generation/mention";
 
 interface UploadedImage {
   key: string;
@@ -77,11 +78,19 @@ export function ImageUploadField({
       <p className="mb-2 text-sm font-medium text-neutral-300">
         {label} <span className="text-neutral-500">({images.length}/{MAX_IMAGES})</span>
       </p>
+      {images.length > 0 && (
+        <p className="mb-2 text-xs text-neutral-500">
+          プロンプト内で @image1 のように入力すると、対応する画像を参照として指定できます
+        </p>
+      )}
       <div className="flex flex-wrap gap-3">
-        {images.map((img) => (
+        {images.map((img, i) => (
           <div key={img.key} className="relative h-20 w-20 overflow-hidden rounded-md border border-neutral-700">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={img.previewUrl} alt="" className="h-full w-full object-cover" />
+            <span className="absolute bottom-0.5 left-0.5 rounded bg-black/70 px-1 text-[10px] leading-4 text-white">
+              {referenceImageTag(i)}
+            </span>
             <button
               type="button"
               onClick={() => removeImage(img.key)}

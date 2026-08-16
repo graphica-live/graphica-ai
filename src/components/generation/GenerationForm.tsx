@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ImageUploadField, type UploadedImage } from "./ImageUploadField";
+import { MentionTextarea } from "./MentionTextarea";
 import { CostEstimate } from "./CostEstimate";
 import { JobStatusCard, type JobStatus } from "./JobStatusCard";
 import { estimateSeedanceCostJpy } from "@/lib/credits/seedance-cost-estimate";
 import { RESOLUTIONS, DURATIONS, ASPECT_RATIOS } from "@/lib/generation/options";
+import { referenceImageTag } from "@/lib/generation/mention";
 
 interface GenerationOptionLimits {
   allowedResolutions: string[];
@@ -117,6 +119,15 @@ export function GenerationForm() {
   const totalCost = costPerVideo !== null ? costPerVideo * batchSize : null;
   const insufficient = totalCost !== null && balance !== null && totalCost > balance;
 
+  const mentionCandidates = useMemo(
+    () =>
+      referenceImages.map((img, i) => ({
+        tag: referenceImageTag(i),
+        previewUrl: img.previewUrl,
+      })),
+    [referenceImages]
+  );
+
   const apiCostEstimateJpy = useMemo(() => {
     const perVideo = estimateSeedanceCostJpy(resolution, durationSeconds);
     return perVideo === null ? null : perVideo * batchSize;
@@ -182,11 +193,13 @@ export function GenerationForm() {
 
         <div>
           <label className="mb-2 block text-sm font-medium text-neutral-300">プロンプト</label>
-          <textarea
+          <MentionTextarea
             value={prompt}
-            onChange={(e) => setPrompt(e.target.value.slice(0, 5000))}
+            onChange={setPrompt}
+            candidates={mentionCandidates}
+            maxLength={5000}
             rows={4}
-            placeholder="生成したい動画の内容を入力してください"
+            placeholder="生成したい動画の内容を入力してください( @ で参照画像を指定できます)"
             className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm placeholder:text-neutral-600 focus:border-neutral-500 focus:outline-none"
           />
           <p className="mt-1 text-right text-xs text-neutral-500">{prompt.length}/5000</p>
