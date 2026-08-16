@@ -223,7 +223,6 @@ export function GenerationForm() {
         <CostEstimate
           cost={totalCost}
           balance={balance}
-          loading={pricingLoading}
           apiCostEstimateJpy={apiCostEstimateJpy}
         />
 
