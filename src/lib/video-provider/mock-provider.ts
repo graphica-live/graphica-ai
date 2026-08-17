@@ -10,7 +10,14 @@ interface MockJobState {
   startedAt: number;
 }
 
-const jobs = new Map<string, MockJobState>();
+// Next.jsはAPI Routeとinstrumentation(poller)を別バンドルとしてコンパイルするため、
+// モジュールスコープの変数だとバンドルごとに別インスタンスになり状態が共有されない。
+// prisma.tsと同じくglobalThisに保持してプロセス内で確実に共有する。
+const globalForMockJobs = globalThis as unknown as {
+  __mockProviderJobs?: Map<string, MockJobState>;
+};
+const jobs = globalForMockJobs.__mockProviderJobs ?? new Map<string, MockJobState>();
+globalForMockJobs.__mockProviderJobs = jobs;
 
 export const mockProvider: VideoGenerationProvider = {
   name: "mock",
