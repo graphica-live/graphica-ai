@@ -18,7 +18,9 @@ export interface MentionQuery {
 
 /**
  * カーソル位置(caretIndex)から遡って、直前に入力中のメンション(`@xxx`)があれば返す。
- * `@` の直前が空白/改行/先頭でない場合はメンション扱いしない。
+ * `@` の直後からカーソルまでに空白/改行が挟まれば入力中のメンションとはみなさない。
+ * 日本語プロンプトでは単語間にスペースを置かないのが通例のため、`@` の直前文字は
+ * 空白/行頭に限定しない(限定すると事実上プロンプト先頭でしか発動しなくなるため)。
  */
 export function findMentionQuery(value: string, caretIndex: number): MentionQuery | null {
   let start = -1;
@@ -31,7 +33,6 @@ export function findMentionQuery(value: string, caretIndex: number): MentionQuer
     if (/\s/.test(ch)) return null;
   }
   if (start === -1) return null;
-  if (start > 0 && !/\s/.test(value[start - 1])) return null;
 
   return { start, query: value.slice(start + 1, caretIndex) };
 }
