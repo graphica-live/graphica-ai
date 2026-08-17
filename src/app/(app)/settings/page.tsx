@@ -1,9 +1,8 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getEffectiveSession } from "@/lib/auth/effective-session";
 import { prisma } from "@/lib/prisma";
 
 export default async function SettingsPage() {
-  const session = await getServerSession(authOptions);
+  const session = await getEffectiveSession();
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: session!.user.id },
   });

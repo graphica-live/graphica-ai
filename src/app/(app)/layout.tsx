@@ -1,10 +1,9 @@
-import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
-import { authOptions } from "@/lib/auth";
+import { getEffectiveSession } from "@/lib/auth/effective-session";
 import { Header } from "@/components/layout/Header";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const session = await getServerSession(authOptions);
+  const session = await getEffectiveSession();
   if (!session?.user) redirect("/login");
 
   return (
