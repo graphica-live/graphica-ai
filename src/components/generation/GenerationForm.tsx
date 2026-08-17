@@ -24,6 +24,7 @@ interface PricingRule {
 
 const POLL_INTERVAL_MS = 3000;
 const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "CANCELED"]);
+const RECENT_JOBS_LIMIT = 3;
 
 export function GenerationForm() {
   const searchParams = useSearchParams();
@@ -85,6 +86,17 @@ export function GenerationForm() {
       setAspectRatio(allowedAspectRatios[0]);
     }
   }, [optionLimits, allowedResolutions, allowedDurations, allowedAspectRatios, resolution, durationSeconds, aspectRatio]);
+
+  // リロード後も直近の生成状況(生成中/生成済み)を表示するため、初回マウント時に直近ジョブを読み込む
+  useEffect(() => {
+    fetch("/api/jobs")
+      .then((r) => r.json())
+      .then((data: { items?: JobStatus[] }) => {
+        const recent = (data.items ?? []).slice(0, RECENT_JOBS_LIMIT);
+        if (recent.length === 0) return;
+        setJobs((prev) => (prev.length > 0 ? prev : recent));
+      });
+  }, []);
 
   // 「引用」導線: 過去ジョブの設定をプリフィルする
   useEffect(() => {
