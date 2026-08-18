@@ -9,6 +9,19 @@ export function referenceImageTag(index: number): string {
   return `@image${index + 1}`;
 }
 
+export function referenceVideoTag(index: number): string {
+  return `@video${index + 1}`;
+}
+
+/**
+ * Dreamina(Seedance 2.5)送信直前にのみ適用する表記正規化。
+ * UI内部/DBでは `@image1` `@video1` (小文字)のまま保持し、
+ * 実際にPOSTされる公式curl例で使われている `@Image1` `@Video1` (先頭大文字)に変換する。
+ */
+export function normalizeMentionsForDreamina(prompt: string): string {
+  return prompt.replace(/@image(\d+)/g, "@Image$1").replace(/@video(\d+)/g, "@Video$1");
+}
+
 export interface MentionQuery {
   /** プロンプト文字列中、`@` の開始位置 */
   start: number;

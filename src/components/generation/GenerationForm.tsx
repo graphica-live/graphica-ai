@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ImageUploadField, type UploadedImage } from "./ImageUploadField";
+import { VideoUploadField, type UploadedVideo } from "./VideoUploadField";
 import { MentionTextarea } from "./MentionTextarea";
 import { CostEstimate } from "./CostEstimate";
 import { JobStatusCard, type JobStatus } from "./JobStatusCard";
 import { estimateSeedanceCostJpy } from "@/lib/credits/seedance-cost-estimate";
 import { estimateCostJpy, type CostSample } from "@/lib/credits/empirical-cost-estimate";
 import { RESOLUTIONS, DURATIONS, ASPECT_RATIOS } from "@/lib/generation/options";
-import { referenceImageTag } from "@/lib/generation/mention";
+import { referenceImageTag, referenceVideoTag } from "@/lib/generation/mention";
 
 interface GenerationOptionLimits {
   allowedResolutions: string[];
@@ -33,6 +34,7 @@ export function GenerationForm() {
 
   const [prompt, setPrompt] = useState("");
   const [referenceImages, setReferenceImages] = useState<UploadedImage[]>([]);
+  const [referenceVideos, setReferenceVideos] = useState<UploadedVideo[]>([]);
   const [resolution, setResolution] = useState<(typeof RESOLUTIONS)[number]>("720p");
   const [durationSeconds, setDurationSeconds] = useState<(typeof DURATIONS)[number]>(5);
   const [aspectRatio, setAspectRatio] = useState<(typeof ASPECT_RATIOS)[number]>("16:9");
@@ -121,27 +123,43 @@ export function GenerationForm() {
             }))
           );
         }
+        if (Array.isArray(job.referenceVideoKeys) && Array.isArray(job.referenceVideoUrls)) {
+          setReferenceVideos(
+            job.referenceVideoKeys.map((key: string, i: number) => ({
+              key,
+              previewUrl: job.referenceVideoUrls[i],
+              durationSeconds: 0,
+            }))
+          );
+        }
       });
   }, [fromJobId]);
 
+  const hasVideoInput = referenceVideos.length > 0;
+
   const costPerVideo = useMemo(() => {
     const rule = pricingRules.find(
-      (r) => r.resolution === resolution && r.hasVideoInput === false
+      (r) => r.resolution === resolution && r.hasVideoInput === hasVideoInput
     );
     if (!rule) return null;
     return Math.ceil(durationSeconds * rule.creditPerSecond);
-  }, [pricingRules, resolution, durationSeconds]);
+  }, [pricingRules, resolution, durationSeconds, hasVideoInput]);
 
   const totalCost = costPerVideo !== null ? costPerVideo * batchSize : null;
   const insufficient = totalCost !== null && balance !== null && totalCost > balance;
 
   const mentionCandidates = useMemo(
-    () =>
-      referenceImages.map((img, i) => ({
+    () => [
+      ...referenceImages.map((img, i) => ({
         tag: referenceImageTag(i),
         previewUrl: img.previewUrl,
       })),
-    [referenceImages]
+      ...referenceVideos.map((v, i) => ({
+        tag: referenceVideoTag(i),
+        previewUrl: v.previewUrl,
+      })),
+    ],
+    [referenceImages, referenceVideos]
   );
 
   const apiCostEstimateJpy = useMemo(() => {
@@ -188,6 +206,7 @@ export function GenerationForm() {
         body: JSON.stringify({
           prompt,
           referenceImageKeys: referenceImages.map((img) => img.key),
+          referenceVideoKeys: referenceVideos.map((v) => v.key),
           resolution,
           durationSeconds,
           aspectRatio,
@@ -213,6 +232,8 @@ export function GenerationForm() {
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-6">
         <ImageUploadField images={referenceImages} onChange={setReferenceImages} />
+
+        <VideoUploadField videos={referenceVideos} onChange={setReferenceVideos} />
 
         <div>
           <label className="mb-2 block text-sm font-medium text-neutral-300">プロンプト</label>

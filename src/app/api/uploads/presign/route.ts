@@ -11,6 +11,7 @@ const ALLOWED_CONTENT_TYPES = [
   "image/bmp",
   "image/tiff",
   "image/gif",
+  "video/mp4",
 ];
 
 const requestSchema = z.object({

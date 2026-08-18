@@ -4,7 +4,7 @@ import { calculateCost } from "@/lib/credits/pricing";
 import { InsufficientCreditsError } from "@/lib/credits/ledger";
 import { getVideoProvider } from "@/lib/video-provider";
 import { getPresignedDownloadUrl } from "@/lib/storage/storage-service";
-import { referenceImageTag } from "@/lib/generation/mention";
+import { referenceImageTag, referenceVideoTag } from "@/lib/generation/mention";
 import { failJob } from "./job-service";
 
 export interface CreateGenerationBatchInput {
@@ -12,6 +12,7 @@ export interface CreateGenerationBatchInput {
   actorUserId?: string;
   prompt: string;
   referenceImageKeys: string[];
+  referenceVideoKeys: string[];
   endFrameImageKey?: string;
   resolution: string;
   durationSeconds: number;
@@ -24,7 +25,7 @@ export interface CreateGenerationBatchInput {
  * 残高不足の場合はDBを一切変更せず InsufficientCreditsError を投げる。
  */
 export async function createGenerationBatch(input: CreateGenerationBatchInput) {
-  const hasVideoInput = false; // 参照画像のみ対応。動画参照入力は将来対応。
+  const hasVideoInput = input.referenceVideoKeys.length > 0;
   const costPerVideo = await calculateCost({
     resolution: input.resolution,
     durationSeconds: input.durationSeconds,
@@ -57,6 +58,7 @@ export async function createGenerationBatch(input: CreateGenerationBatchInput) {
           batchSize: input.batchSize,
           prompt: input.prompt,
           referenceImageKeys: input.referenceImageKeys,
+          referenceVideoKeys: input.referenceVideoKeys,
           endFrameImageKey: input.endFrameImageKey,
           resolution: input.resolution,
           durationSeconds: input.durationSeconds,
@@ -87,6 +89,13 @@ export async function createGenerationBatch(input: CreateGenerationBatchInput) {
     tag: referenceImageTag(i),
     url,
   }));
+  const referenceVideoUrls = await Promise.all(
+    input.referenceVideoKeys.map((key) => getPresignedDownloadUrl(key))
+  );
+  const referenceVideos = referenceVideoUrls.map((url, i) => ({
+    tag: referenceVideoTag(i),
+    url,
+  }));
   const endFrameImageUrl = input.endFrameImageKey
     ? await getPresignedDownloadUrl(input.endFrameImageKey)
     : undefined;
@@ -97,6 +106,7 @@ export async function createGenerationBatch(input: CreateGenerationBatchInput) {
         const { providerJobId } = await provider.submit({
           prompt: input.prompt,
           referenceImages,
+          referenceVideos,
           endFrameImageUrl,
           resolution: input.resolution,
           durationSeconds: input.durationSeconds,
