@@ -23,6 +23,37 @@ export function ImageUploadField({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+  const replaceKeyRef = useRef<string | null>(null);
+
+  async function uploadFile(file: File): Promise<UploadedImage | null> {
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setError(`未対応のファイル形式です: ${file.name}`);
+      return null;
+    }
+    const presignRes = await fetch("/api/uploads/presign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename: file.name, contentType: file.type }),
+    });
+    if (!presignRes.ok) {
+      setError("アップロードURLの発行に失敗しました");
+      return null;
+    }
+    const { key, uploadUrl } = await presignRes.json();
+
+    const putRes = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": file.type },
+      body: file,
+    });
+    if (!putRes.ok) {
+      setError(`アップロードに失敗しました: ${file.name}`);
+      return null;
+    }
+
+    return { key, previewUrl: URL.createObjectURL(file) };
+  }
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -34,32 +65,8 @@ export function ImageUploadField({
 
       const uploaded: UploadedImage[] = [];
       for (const file of filesToUpload) {
-        if (!ALLOWED_TYPES.includes(file.type)) {
-          setError(`未対応のファイル形式です: ${file.name}`);
-          continue;
-        }
-        const presignRes = await fetch("/api/uploads/presign", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filename: file.name, contentType: file.type }),
-        });
-        if (!presignRes.ok) {
-          setError("アップロードURLの発行に失敗しました");
-          continue;
-        }
-        const { key, uploadUrl } = await presignRes.json();
-
-        const putRes = await fetch(uploadUrl, {
-          method: "PUT",
-          headers: { "Content-Type": file.type },
-          body: file,
-        });
-        if (!putRes.ok) {
-          setError(`アップロードに失敗しました: ${file.name}`);
-          continue;
-        }
-
-        uploaded.push({ key, previewUrl: URL.createObjectURL(file) });
+        const result = await uploadFile(file);
+        if (result) uploaded.push(result);
       }
 
       onChange([...images, ...uploaded]);
@@ -69,8 +76,31 @@ export function ImageUploadField({
     }
   }
 
+  async function handleReplaceFile(files: FileList | null) {
+    const file = files?.[0];
+    const targetKey = replaceKeyRef.current;
+    if (!file || !targetKey) return;
+    setError(null);
+    setUploading(true);
+    try {
+      const result = await uploadFile(file);
+      if (result) {
+        onChange(images.map((img) => (img.key === targetKey ? result : img)));
+      }
+    } finally {
+      setUploading(false);
+      replaceKeyRef.current = null;
+      if (replaceInputRef.current) replaceInputRef.current.value = "";
+    }
+  }
+
   function removeImage(key: string) {
     onChange(images.filter((img) => img.key !== key));
+  }
+
+  function startReplace(key: string) {
+    replaceKeyRef.current = key;
+    replaceInputRef.current?.click();
   }
 
   return (
@@ -80,15 +110,25 @@ export function ImageUploadField({
       </p>
       {images.length > 0 && (
         <p className="mb-2 text-xs text-neutral-500">
-          プロンプト内で @image1 のように入力すると、対応する画像を参照として指定できます
+          プロンプト内で @image1 のように入力すると、対応する画像を参照として指定できます。画像をクリックすると差し替えられます
         </p>
       )}
       <div className="flex flex-wrap gap-3">
         {images.map((img, i) => (
-          <div key={img.key} className="relative h-20 w-20 overflow-hidden rounded-md border border-neutral-700">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={img.previewUrl} alt="" className="h-full w-full object-cover" />
-            <span className="absolute bottom-0.5 left-0.5 rounded bg-black/70 px-1 text-[10px] leading-4 text-white">
+          <div key={img.key} className="group relative h-20 w-20 overflow-hidden rounded-md border border-neutral-700">
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={() => startReplace(img.key)}
+              className="block h-full w-full disabled:opacity-50"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={img.previewUrl} alt="" className="h-full w-full object-cover" />
+              <span className="pointer-events-none absolute inset-0 hidden items-center justify-center bg-black/60 text-[10px] text-white group-hover:flex">
+                差し替え
+              </span>
+            </button>
+            <span className="pointer-events-none absolute bottom-0.5 left-0.5 rounded bg-black/70 px-1 text-[10px] leading-4 text-white">
               {referenceImageTag(i)}
             </span>
             <button
@@ -118,6 +158,13 @@ export function ImageUploadField({
         multiple
         className="hidden"
         onChange={(e) => handleFiles(e.target.files)}
+      />
+      <input
+        ref={replaceInputRef}
+        type="file"
+        accept={ALLOWED_TYPES.join(",")}
+        className="hidden"
+        onChange={(e) => handleReplaceFile(e.target.files)}
       />
       {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
     </div>
