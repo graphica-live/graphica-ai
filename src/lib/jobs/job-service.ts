@@ -37,6 +37,7 @@ export async function completeJob(jobId: string, result: VideoGenerationStatusRe
       videoObjectKey,
       thumbnailObjectKey,
       completedAt: new Date(),
+      actualTotalTokens: result.usage?.totalTokens,
     },
   });
 }

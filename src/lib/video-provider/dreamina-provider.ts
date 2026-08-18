@@ -1,52 +1,124 @@
-import type { VideoGenerationRequest, VideoGenerationProvider } from "./types";
+import type {
+  VideoGenerationRequest,
+  VideoGenerationProvider,
+  VideoGenerationStatusResult,
+  ProviderJobStatus,
+} from "./types";
 
-interface DreaminaReferenceImage {
-  tag: string;
-  url: string;
+const BASE_URL = process.env.DREAMINA_API_BASE_URL || "https://ark.ap-southeast.bytepluses.com/api/v3";
+// BytePlus ModelArkのSeedance 2.5モデルID。Web検索で確認した最有力候補で未確認。
+// 初回submit時に404/ModelNotFound系のエラーが返る場合はこの値を見直すこと。
+const MODEL = "dreamina-seedance-2-5-260628";
+
+type ContentItem =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string }; role: string };
+
+interface DreaminaSubmitBody {
+  model: string;
+  content: ContentItem[];
 }
 
-interface DreaminaGenerateRequestBody {
-  prompt: string;
-  resolution: string;
-  duration: number;
-  aspect_ratio: string;
-  reference_images?: DreaminaReferenceImage[];
-  end_frame_image_url?: string;
+interface DreaminaErrorResponse {
+  error?: { code?: string; message?: string; param?: string; type?: string };
+}
+
+interface DreaminaTaskResponse extends DreaminaErrorResponse {
+  id?: string;
+  model?: string;
+  status?: string;
+  content?: { video_url?: string };
+  usage?: { completion_tokens?: number; total_tokens?: number };
 }
 
 /**
- * プロンプト中の `@image1` などのタグと参照画像URLを、Seedance/Dreamina API仕様の
- * `reference_images` 配列にマッピングしたリクエストボディを組み立てる。
- * プロンプト文字列自体はタグを含んだまま送る(API側でタグを解決する仕様のため)。
+ * プロンプト末尾に `--ratio --resolution --duration --camerafixed` を埋め込む形式。
+ * BytePlus公式ブログのcurl例(Seedance 1.0/lite)で確認済みの形式をそのまま踏襲する。
+ * 参照画像・末尾フレームのcontent要素(role名含む)はドキュメントが未確認のためベストエフォート。
  */
-export function buildDreaminaRequestBody(req: VideoGenerationRequest): DreaminaGenerateRequestBody {
-  return {
-    prompt: req.prompt,
-    resolution: req.resolution,
-    duration: req.durationSeconds,
-    aspect_ratio: req.aspectRatio,
-    ...(req.referenceImages.length > 0 && {
-      reference_images: req.referenceImages.map(({ tag, url }) => ({ tag, url })),
-    }),
-    ...(req.endFrameImageUrl && { end_frame_image_url: req.endFrameImageUrl }),
-  };
+export function buildDreaminaRequestBody(req: VideoGenerationRequest): DreaminaSubmitBody {
+  const text = `${req.prompt} --ratio ${req.aspectRatio} --resolution ${req.resolution} --duration ${req.durationSeconds} --camerafixed false`;
+  const content: ContentItem[] = [{ type: "text", text }];
+
+  for (const image of req.referenceImages) {
+    content.push({ type: "image_url", image_url: { url: image.url }, role: "reference_image" });
+  }
+  if (req.endFrameImageUrl) {
+    content.push({ type: "image_url", image_url: { url: req.endFrameImageUrl }, role: "last_frame" });
+  }
+
+  return { model: MODEL, content };
 }
 
-// Dreamina APIの実仕様(認証方式・エンドポイント・レスポンス形式)が確定していないため、
-// HTTP送信部分は未実装。仕様確定後、buildDreaminaRequestBody()の結果をPOSTする形で
-// submit/getStatusを実装する。
+function mapProviderStatus(status: string | undefined): ProviderJobStatus {
+  switch (status) {
+    case "queued":
+      return "pending";
+    case "running":
+      return "processing";
+    case "succeeded":
+      return "completed";
+    case "failed":
+    case "cancelled":
+      return "failed";
+    default:
+      return "processing";
+  }
+}
+
+function authHeaders(): Record<string, string> {
+  const apiKey = process.env.DREAMINA_API_KEY;
+  if (!apiKey) {
+    throw new Error("DREAMINA_API_KEYが設定されていません");
+  }
+  return { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` };
+}
+
 export const dreaminaProvider: VideoGenerationProvider = {
   name: "dreamina",
 
-  async submit() {
-    throw new Error(
-      "Dreamina providerは未実装です。仕様確定後にsrc/lib/video-provider/dreamina-provider.tsを実装してください。"
-    );
+  async submit(req) {
+    const res = await fetch(`${BASE_URL}/contents/generations/tasks`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(buildDreaminaRequestBody(req)),
+    });
+    const body: DreaminaTaskResponse = await res.json().catch(() => ({}));
+    if (!res.ok || !body.id) {
+      throw new Error(body.error?.message ?? `Dreamina submit failed: status=${res.status}`);
+    }
+    return { providerJobId: body.id };
   },
 
-  async getStatus() {
-    throw new Error(
-      "Dreamina providerは未実装です。仕様確定後にsrc/lib/video-provider/dreamina-provider.tsを実装してください。"
-    );
+  async getStatus(providerJobId): Promise<VideoGenerationStatusResult> {
+    const res = await fetch(`${BASE_URL}/contents/generations/tasks/${providerJobId}`, {
+      headers: authHeaders(),
+    });
+    const body: DreaminaTaskResponse = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(body.error?.message ?? `Dreamina getStatus failed: status=${res.status}`);
+    }
+
+    const status = mapProviderStatus(body.status);
+    if (status === "failed") {
+      return {
+        status,
+        errorMessage: body.error?.message ?? `生成に失敗しました(Dreamina, status=${body.status})`,
+      };
+    }
+    if (status === "completed") {
+      return {
+        status,
+        videoUrl: body.content?.video_url,
+        usage:
+          body.usage?.total_tokens != null
+            ? {
+                completionTokens: body.usage.completion_tokens ?? body.usage.total_tokens,
+                totalTokens: body.usage.total_tokens,
+              }
+            : undefined,
+      };
+    }
+    return { status };
   },
 };

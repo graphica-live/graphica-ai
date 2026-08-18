@@ -25,6 +25,7 @@ export interface VideoGenerationStatusResult {
   videoUrl?: string;
   thumbnailUrl?: string;
   errorMessage?: string;
+  usage?: { completionTokens: number; totalTokens: number };
 }
 
 export interface VideoGenerationProvider {
