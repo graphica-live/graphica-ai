@@ -7,6 +7,7 @@ import { MentionTextarea } from "./MentionTextarea";
 import { CostEstimate } from "./CostEstimate";
 import { JobStatusCard, type JobStatus } from "./JobStatusCard";
 import { estimateSeedanceCostJpy } from "@/lib/credits/seedance-cost-estimate";
+import { estimateCostJpy, type CostSample } from "@/lib/credits/empirical-cost-estimate";
 import { RESOLUTIONS, DURATIONS, ASPECT_RATIOS } from "@/lib/generation/options";
 import { referenceImageTag } from "@/lib/generation/mention";
 
@@ -38,6 +39,7 @@ export function GenerationForm() {
   const [batchSize, setBatchSize] = useState(1);
 
   const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
+  const [costSamples, setCostSamples] = useState<CostSample[]>([]);
   const [balance, setBalance] = useState<number | null>(null);
   const [pricingLoading, setPricingLoading] = useState(true);
   const [optionLimits, setOptionLimits] = useState<GenerationOptionLimits | null>(null);
@@ -51,11 +53,13 @@ export function GenerationForm() {
       fetch("/api/pricing").then((r) => r.json()),
       fetch("/api/credits/balance").then((r) => r.json()),
       fetch("/api/generate/options").then((r) => r.json()),
+      fetch("/api/cost-samples").then((r) => r.json()),
     ])
-      .then(([rules, balanceRes, limits]) => {
+      .then(([rules, balanceRes, limits, samples]) => {
         setPricingRules(rules);
         setBalance(balanceRes.creditBalance);
         setOptionLimits(limits);
+        setCostSamples(Array.isArray(samples) ? samples : []);
       })
       .finally(() => setPricingLoading(false));
   }, []);
@@ -141,9 +145,16 @@ export function GenerationForm() {
   );
 
   const apiCostEstimateJpy = useMemo(() => {
-    const perVideo = estimateSeedanceCostJpy(resolution, durationSeconds);
+    const perVideo =
+      estimateCostJpy(costSamples, {
+        resolution,
+        aspectRatio,
+        durationSeconds,
+        hasReferenceImages: referenceImages.length > 0,
+        hasEndFrame: false,
+      }) ?? estimateSeedanceCostJpy(resolution, durationSeconds);
     return perVideo === null ? null : perVideo * batchSize;
-  }, [resolution, durationSeconds, batchSize]);
+  }, [costSamples, resolution, aspectRatio, durationSeconds, referenceImages.length, batchSize]);
 
   // 実行中ジョブのステータスをポーリングする
   useEffect(() => {

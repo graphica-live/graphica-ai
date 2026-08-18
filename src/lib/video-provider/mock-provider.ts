@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import type { VideoGenerationProvider } from "./types";
+import { estimateSeedanceTokens } from "@/lib/credits/seedance-cost-estimate";
 
 // Dreamina API未接続でも動作確認できるように、実際のバイト取得先として
 // 公開されているサンプル動画を返す(egress/保存フローの検証用)。
@@ -8,6 +9,8 @@ const SIMULATED_DURATION_MS = 8000;
 
 interface MockJobState {
   startedAt: number;
+  resolution: string;
+  durationSeconds: number;
 }
 
 // Next.jsはAPI Routeとinstrumentation(poller)を別バンドルとしてコンパイルするため、
@@ -22,9 +25,13 @@ globalForMockJobs.__mockProviderJobs = jobs;
 export const mockProvider: VideoGenerationProvider = {
   name: "mock",
 
-  async submit() {
+  async submit(req) {
     const providerJobId = uuidv4();
-    jobs.set(providerJobId, { startedAt: Date.now() });
+    jobs.set(providerJobId, {
+      startedAt: Date.now(),
+      resolution: req.resolution,
+      durationSeconds: req.durationSeconds,
+    });
     return { providerJobId };
   },
 
@@ -42,6 +49,13 @@ export const mockProvider: VideoGenerationProvider = {
       };
     }
 
-    return { status: "completed", videoUrl: SAMPLE_VIDEO_URL };
+    // 実測ベースのコスト概算パイプラインをmockでも検証できるよう、
+    // 数式ベースの概算トークン数を実測値の代わりに返す。
+    const tokens = estimateSeedanceTokens(job.resolution, job.durationSeconds);
+    return {
+      status: "completed",
+      videoUrl: SAMPLE_VIDEO_URL,
+      usage: tokens !== null ? { completionTokens: tokens, totalTokens: tokens } : undefined,
+    };
   },
 };

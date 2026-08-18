@@ -127,6 +127,10 @@ model GenerationJob {
 
   creditCost Int
 
+  // プロバイダが完了時に報告した実トークン消費量(usage.total_tokens)。
+  // コスト概算表示の実測値ソースとして使う。未報告の場合はnull。
+  actualTotalTokens Int?
+
   videoObjectKey     String?
   thumbnailObjectKey String?
 
