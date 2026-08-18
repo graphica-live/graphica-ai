@@ -15,6 +15,7 @@ const requestSchema = z
     resolution: z.enum(RESOLUTIONS),
     durationSeconds: z.number().int().min(1).max(30),
     aspectRatio: z.enum(ASPECT_RATIOS),
+    generateAudio: z.boolean().default(true),
     batchSize: z.number().int().min(1).max(10).default(1),
   })
   .refine(
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
       resolution: body.resolution,
       durationSeconds: body.durationSeconds,
       aspectRatio: body.aspectRatio,
+      generateAudio: body.generateAudio,
       batchSize: body.batchSize,
     });
 

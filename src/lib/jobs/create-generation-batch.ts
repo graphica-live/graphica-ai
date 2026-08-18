@@ -17,6 +17,7 @@ export interface CreateGenerationBatchInput {
   resolution: string;
   durationSeconds: number;
   aspectRatio: string;
+  generateAudio: boolean;
   batchSize: number;
 }
 
@@ -63,6 +64,7 @@ export async function createGenerationBatch(input: CreateGenerationBatchInput) {
           resolution: input.resolution,
           durationSeconds: input.durationSeconds,
           aspectRatio: input.aspectRatio,
+          generateAudio: input.generateAudio,
           creditCost: costPerVideo,
           status: "PENDING",
         },
@@ -111,6 +113,7 @@ export async function createGenerationBatch(input: CreateGenerationBatchInput) {
           resolution: input.resolution,
           durationSeconds: input.durationSeconds,
           aspectRatio: input.aspectRatio,
+          generateAudio: input.generateAudio,
         });
         await prisma.generationJob.update({
           where: { id: job.id },

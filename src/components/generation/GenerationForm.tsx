@@ -38,6 +38,7 @@ export function GenerationForm() {
   const [resolution, setResolution] = useState<(typeof RESOLUTIONS)[number]>("720p");
   const [durationSeconds, setDurationSeconds] = useState<(typeof DURATIONS)[number]>(5);
   const [aspectRatio, setAspectRatio] = useState<(typeof ASPECT_RATIOS)[number]>("16:9");
+  const [generateAudio, setGenerateAudio] = useState(true);
   const [batchSize, setBatchSize] = useState(1);
 
   const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
@@ -115,6 +116,7 @@ export function GenerationForm() {
         setResolution(job.resolution ?? "720p");
         setDurationSeconds(job.durationSeconds ?? 5);
         setAspectRatio(job.aspectRatio ?? "16:9");
+        setGenerateAudio(job.generateAudio ?? true);
         if (Array.isArray(job.referenceImageKeys) && Array.isArray(job.referenceImageUrls)) {
           setReferenceImages(
             job.referenceImageKeys.map((key: string, i: number) => ({
@@ -210,6 +212,7 @@ export function GenerationForm() {
           resolution,
           durationSeconds,
           aspectRatio,
+          generateAudio,
           batchSize,
         }),
       });
@@ -296,6 +299,18 @@ export function GenerationForm() {
               ))}
             </select>
           </div>
+        </div>
+
+        <div>
+          <label className="flex items-center gap-2 text-sm font-medium text-neutral-300">
+            <input
+              type="checkbox"
+              checked={generateAudio}
+              onChange={(e) => setGenerateAudio(e.target.checked)}
+              className="h-4 w-4 rounded border-neutral-700 bg-neutral-900"
+            />
+            音声生成
+          </label>
         </div>
 
         <div>

@@ -18,6 +18,7 @@ export interface VideoGenerationRequest {
   resolution: string;
   durationSeconds: number;
   aspectRatio: string;
+  generateAudio: boolean;
 }
 
 export interface VideoGenerationSubmitResult {
