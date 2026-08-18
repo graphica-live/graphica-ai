@@ -221,6 +221,10 @@ export function GenerationForm() {
       setJobs(
         (data.jobIds as string[]).map((id) => ({ id, status: "PENDING" as const }))
       );
+      // キュー発行時点でサーバー側は即座に残高を減算するため、ポーリングを待たず表示を更新する
+      fetch("/api/credits/balance")
+        .then((r) => r.json())
+        .then((res) => setBalance(res.creditBalance));
     } finally {
       setSubmitting(false);
     }
