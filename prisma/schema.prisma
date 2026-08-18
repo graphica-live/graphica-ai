@@ -125,6 +125,7 @@ model GenerationJob {
   resolution         String
   durationSeconds    Int
   aspectRatio        String
+  generateAudio      Boolean  @default(true)
 
   creditCost Int
 

@@ -22,6 +22,7 @@ interface DreaminaSubmitBody {
   resolution: string;
   ratio: string;
   duration: number;
+  generate_audio: boolean;
   omni_reference_task_type?: "reference";
 }
 
@@ -52,6 +53,8 @@ interface DreaminaTaskResponse extends DreaminaErrorResponse {
  * - endFrameImageUrl と referenceVideos/referenceImages(reference_video/
  *   reference_image role)は公式に "mutually exclusive" と明記されており併用不可
  *   (呼び出し側でバリデーション済みの前提)。
+ * - generate_audio はトップレベルのJSONブール値として送る。省略時のAPI既定値が
+ *   trueかは公式リファレンスで明示されていないため、常に明示的に送信する。
  */
 export function buildDreaminaRequestBody(req: VideoGenerationRequest): DreaminaSubmitBody {
   const text = normalizeMentionsForDreamina(req.prompt);
@@ -73,6 +76,7 @@ export function buildDreaminaRequestBody(req: VideoGenerationRequest): DreaminaS
     resolution: req.resolution,
     ratio: req.endFrameImageUrl ? "adaptive" : req.aspectRatio,
     duration: req.durationSeconds,
+    generate_audio: req.generateAudio,
     ...(req.referenceVideos.length > 0 ? { omni_reference_task_type: "reference" as const } : {}),
   };
 }
