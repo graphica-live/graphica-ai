@@ -4,6 +4,7 @@ import type {
   VideoGenerationStatusResult,
   ProviderJobStatus,
 } from "./types";
+import { normalizeMentionsForDreamina } from "@/lib/generation/mention";
 
 const BASE_URL = process.env.DREAMINA_API_BASE_URL || "https://ark.ap-southeast.bytepluses.com/api/v3";
 // BytePlus ModelArkのSeedance 2.5モデルID。Web検索で確認した最有力候補で未確認。
@@ -12,11 +13,16 @@ const MODEL = "dreamina-seedance-2-5-260628";
 
 type ContentItem =
   | { type: "text"; text: string }
-  | { type: "image_url"; image_url: { url: string }; role: string };
+  | { type: "image_url"; image_url: { url: string }; role: "reference_image" | "last_frame" }
+  | { type: "video_url"; video_url: { url: string }; role: "reference_video" };
 
 interface DreaminaSubmitBody {
   model: string;
   content: ContentItem[];
+  resolution: string;
+  ratio: string;
+  duration: number;
+  omni_reference_task_type?: "reference";
 }
 
 interface DreaminaErrorResponse {
@@ -32,12 +38,23 @@ interface DreaminaTaskResponse extends DreaminaErrorResponse {
 }
 
 /**
- * プロンプト末尾に `--ratio --resolution --duration --camerafixed` を埋め込む形式。
- * BytePlus公式ブログのcurl例(Seedance 1.0/lite)で確認済みの形式をそのまま踏襲する。
- * 参照画像・末尾フレームのcontent要素(role名含む)はドキュメントが未確認のためベストエフォート。
+ * BytePlus ModelArk公式APIリファレンス「Create a video generation task」
+ * (docs.byteplus.com/en/docs/ModelArk/1520757, Seedance 2.5)に基づく実装。
+ *
+ * - resolution/ratio/duration はトップレベルのJSONパラメータとして送る
+ *   (プロンプト文字列への `--flag` 埋め込みは公式リファレンスに存在しない)。
+ * - camera_fixed はSupported modelsにSeedance 2.5が含まれないため送信しない。
+ * - endFrameImageUrl(first/last-frame)使用時、Seedance 2.5は先頭フレームの
+ *   アスペクト比を自動維持し ratio は `adaptive` 固定のみサポートされる。
+ * - referenceVideos(omni reference-to-video)使用時は `omni_reference_task_type:
+ *   "reference"` を明示する。省略(=auto)だとプロンプト文言次第でedit/extendに
+ *   誤判定され `InvalidParameter.TaskTypeMismatch` になりうるため常に明示する。
+ * - endFrameImageUrl と referenceVideos/referenceImages(reference_video/
+ *   reference_image role)は公式に "mutually exclusive" と明記されており併用不可
+ *   (呼び出し側でバリデーション済みの前提)。
  */
 export function buildDreaminaRequestBody(req: VideoGenerationRequest): DreaminaSubmitBody {
-  const text = `${req.prompt} --ratio ${req.aspectRatio} --resolution ${req.resolution} --duration ${req.durationSeconds} --camerafixed false`;
+  const text = normalizeMentionsForDreamina(req.prompt);
   const content: ContentItem[] = [{ type: "text", text }];
 
   for (const image of req.referenceImages) {
@@ -46,8 +63,18 @@ export function buildDreaminaRequestBody(req: VideoGenerationRequest): DreaminaS
   if (req.endFrameImageUrl) {
     content.push({ type: "image_url", image_url: { url: req.endFrameImageUrl }, role: "last_frame" });
   }
+  for (const video of req.referenceVideos) {
+    content.push({ type: "video_url", video_url: { url: video.url }, role: "reference_video" });
+  }
 
-  return { model: MODEL, content };
+  return {
+    model: MODEL,
+    content,
+    resolution: req.resolution,
+    ratio: req.endFrameImageUrl ? "adaptive" : req.aspectRatio,
+    duration: req.durationSeconds,
+    ...(req.referenceVideos.length > 0 ? { omni_reference_task_type: "reference" as const } : {}),
+  };
 }
 
 function mapProviderStatus(status: string | undefined): ProviderJobStatus {

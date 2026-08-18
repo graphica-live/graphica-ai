@@ -6,15 +6,25 @@ import { createGenerationBatch } from "@/lib/jobs/create-generation-batch";
 import { prisma } from "@/lib/prisma";
 import { RESOLUTIONS, ASPECT_RATIOS } from "@/lib/generation/options";
 
-const requestSchema = z.object({
-  prompt: z.string().min(1).max(5000),
-  referenceImageKeys: z.array(z.string()).max(9).default([]),
-  endFrameImageKey: z.string().optional(),
-  resolution: z.enum(RESOLUTIONS),
-  durationSeconds: z.number().int().min(1).max(30),
-  aspectRatio: z.enum(ASPECT_RATIOS),
-  batchSize: z.number().int().min(1).max(10).default(1),
-});
+const requestSchema = z
+  .object({
+    prompt: z.string().min(1).max(5000),
+    referenceImageKeys: z.array(z.string()).max(9).default([]),
+    referenceVideoKeys: z.array(z.string()).max(10).default([]),
+    endFrameImageKey: z.string().optional(),
+    resolution: z.enum(RESOLUTIONS),
+    durationSeconds: z.number().int().min(1).max(30),
+    aspectRatio: z.enum(ASPECT_RATIOS),
+    batchSize: z.number().int().min(1).max(10).default(1),
+  })
+  .refine(
+    (body) => !(body.endFrameImageKey && body.referenceVideoKeys.length > 0),
+    {
+      message:
+        "末尾フレーム画像(endFrameImageKey)と動画参照(referenceVideoKeys)は同時に指定できません",
+      path: ["referenceVideoKeys"],
+    }
+  );
 
 export async function POST(req: Request) {
   try {
@@ -41,6 +51,7 @@ export async function POST(req: Request) {
       actorUserId: user.impersonatedBy,
       prompt: body.prompt,
       referenceImageKeys: body.referenceImageKeys,
+      referenceVideoKeys: body.referenceVideoKeys,
       endFrameImageKey: body.endFrameImageKey,
       resolution: body.resolution,
       durationSeconds: body.durationSeconds,

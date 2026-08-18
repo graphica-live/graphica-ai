@@ -21,8 +21,17 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     const referenceImageUrls = await Promise.all(
       job.referenceImageKeys.map((key) => getPresignedDownloadUrl(key))
     );
+    const referenceVideoUrls = await Promise.all(
+      job.referenceVideoKeys.map((key) => getPresignedDownloadUrl(key))
+    );
 
-    return NextResponse.json({ ...job, videoUrl, thumbnailUrl, referenceImageUrls });
+    return NextResponse.json({
+      ...job,
+      videoUrl,
+      thumbnailUrl,
+      referenceImageUrls,
+      referenceVideoUrls,
+    });
   } catch (err) {
     if (err instanceof UnauthorizedError) {
       return NextResponse.json({ error: err.message }, { status: 401 });
