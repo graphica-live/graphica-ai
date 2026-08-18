@@ -25,6 +25,20 @@ export async function getPresignedDownloadUrl(key: string) {
   return getSignedUrl(s3, command, { expiresIn: DOWNLOAD_URL_EXPIRES_SEC });
 }
 
+/**
+ * クライアントがbucketから直接「ファイルとして保存」できるpresigned GET URLを発行する。
+ * response-content-dispositionをattachmentにすることで、クロスオリジンのbucket URLでも
+ * ブラウザが再生ではなく保存ダイアログとして扱う。
+ */
+export async function getPresignedAttachmentUrl(key: string, filename: string) {
+  const command = new GetObjectCommand({
+    Bucket: BUCKET_NAME,
+    Key: key,
+    ResponseContentDisposition: `attachment; filename="${encodeURIComponent(filename)}"`,
+  });
+  return getSignedUrl(s3, command, { expiresIn: DOWNLOAD_URL_EXPIRES_SEC });
+}
+
 /** サーバーがプロバイダの生成結果など任意のバイト列をbucketへ保存する。 */
 export async function uploadObject(
   key: string,

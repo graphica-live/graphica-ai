@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export interface HistoryJob {
@@ -8,6 +8,7 @@ export interface HistoryJob {
   status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELED";
   prompt: string;
   videoUrl?: string;
+  downloadUrl?: string;
   thumbnailUrl?: string;
   createdAt: string;
 }
@@ -20,6 +21,57 @@ const STATUS_LABEL: Record<HistoryJob["status"], string> = {
   CANCELED: "キャンセル",
 };
 
+function VideoLightbox({ job, onClose }: { job: HistoryJob; onClose: () => void }) {
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-full w-full max-w-3xl flex-col gap-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <video
+          src={job.videoUrl}
+          poster={job.thumbnailUrl}
+          controls
+          autoPlay
+          playsInline
+          className="max-h-[80vh] w-full rounded-lg bg-black"
+        />
+        <div className="flex items-center justify-between gap-3">
+          <p className="line-clamp-1 text-xs text-neutral-400">{job.prompt}</p>
+          <div className="flex shrink-0 gap-2">
+            {job.downloadUrl && (
+              <a
+                href={job.downloadUrl}
+                download
+                className="rounded-md border border-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-800"
+              >
+                ダウンロード
+              </a>
+            )}
+            <button
+              onClick={onClose}
+              className="rounded-md border border-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-800"
+            >
+              閉じる
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function GenerationCard({
   job,
   onDeleted,
@@ -30,6 +82,7 @@ export function GenerationCard({
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [deleting, setDeleting] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   function handleMouseEnter() {
     videoRef.current?.play().catch(() => {});
@@ -57,23 +110,41 @@ export function GenerationCard({
     router.push(`/?fromJobId=${job.id}`);
   }
 
+  const canExpand = job.status === "COMPLETED" && Boolean(job.videoUrl);
+
   return (
     <div className="group overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
       <div
-        className="relative aspect-video bg-neutral-950"
+        className={`relative aspect-video bg-neutral-950 ${canExpand ? "cursor-pointer" : ""}`}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
+        onClick={() => canExpand && setLightboxOpen(true)}
       >
-        {job.status === "COMPLETED" && job.videoUrl ? (
-          <video
-            ref={videoRef}
-            src={job.videoUrl}
-            poster={job.thumbnailUrl}
-            muted
-            loop
-            playsInline
-            className="h-full w-full object-cover"
-          />
+        {canExpand ? (
+          <>
+            <video
+              ref={videoRef}
+              src={job.videoUrl}
+              poster={job.thumbnailUrl}
+              muted
+              loop
+              playsInline
+              className="h-full w-full object-cover"
+            />
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/30 group-hover:opacity-100">
+              <span className="rounded-full bg-black/60 p-2 text-white">
+                <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
+                  <path
+                    d="M9 3H3v6M15 3h6v6M9 21H3v-6M15 21h6v-6"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </span>
+            </div>
+          </>
         ) : (
           <div className="flex h-full items-center justify-center text-xs text-neutral-500">
             {STATUS_LABEL[job.status]}
@@ -89,6 +160,15 @@ export function GenerationCard({
           >
             引用
           </button>
+          {job.downloadUrl && (
+            <a
+              href={job.downloadUrl}
+              download
+              className="flex-1 rounded-md border border-neutral-700 py-1.5 text-center text-xs hover:bg-neutral-800"
+            >
+              ダウンロード
+            </a>
+          )}
           <button
             onClick={handleDelete}
             disabled={deleting}
@@ -98,6 +178,7 @@ export function GenerationCard({
           </button>
         </div>
       </div>
+      {lightboxOpen && <VideoLightbox job={job} onClose={() => setLightboxOpen(false)} />}
     </div>
   );
 }
