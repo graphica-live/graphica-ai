@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireUser, UnauthorizedError } from "@/lib/admin/guard";
 import { prisma } from "@/lib/prisma";
-import { getPresignedDownloadUrl } from "@/lib/storage/storage-service";
+import {
+  getPresignedDownloadUrl,
+  getPresignedAttachmentUrl,
+} from "@/lib/storage/storage-service";
 
 const PAGE_SIZE = 24;
 
@@ -26,6 +29,9 @@ export async function GET(req: Request) {
         ...job,
         videoUrl: job.videoObjectKey
           ? await getPresignedDownloadUrl(job.videoObjectKey)
+          : undefined,
+        downloadUrl: job.videoObjectKey
+          ? await getPresignedAttachmentUrl(job.videoObjectKey, `graphica-video-${job.id}.mp4`)
           : undefined,
         thumbnailUrl: job.thumbnailObjectKey
           ? await getPresignedDownloadUrl(job.thumbnailObjectKey)
