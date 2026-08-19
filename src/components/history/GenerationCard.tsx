@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { downloadFile } from "@/lib/download";
+import { videoDownloadFilename } from "@/lib/jobs/video-naming";
 
 export interface HistoryJob {
   id: string;
@@ -20,6 +22,27 @@ const STATUS_LABEL: Record<HistoryJob["status"], string> = {
   FAILED: "失敗",
   CANCELED: "キャンセル",
 };
+
+function DownloadButton({ job, className }: { job: HistoryJob; className: string }) {
+  const [saving, setSaving] = useState(false);
+  const downloadUrl = job.downloadUrl;
+  if (!downloadUrl) return null;
+
+  async function handleClick() {
+    setSaving(true);
+    try {
+      await downloadFile(downloadUrl!, videoDownloadFilename(job.id));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <button onClick={handleClick} disabled={saving} className={className}>
+      {saving ? "保存中…" : "ダウンロード"}
+    </button>
+  );
+}
 
 function VideoLightbox({ job, onClose }: { job: HistoryJob; onClose: () => void }) {
   useEffect(() => {
@@ -50,15 +73,10 @@ function VideoLightbox({ job, onClose }: { job: HistoryJob; onClose: () => void 
         <div className="flex items-center justify-between gap-3">
           <p className="line-clamp-1 text-xs text-neutral-400">{job.prompt}</p>
           <div className="flex shrink-0 gap-2">
-            {job.downloadUrl && (
-              <a
-                href={job.downloadUrl}
-                download
-                className="rounded-md border border-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-800"
-              >
-                ダウンロード
-              </a>
-            )}
+            <DownloadButton
+              job={job}
+              className="rounded-md border border-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-800 disabled:opacity-50"
+            />
             <button
               onClick={onClose}
               className="rounded-md border border-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-800"
@@ -160,15 +178,10 @@ export function GenerationCard({
           >
             引用
           </button>
-          {job.downloadUrl && (
-            <a
-              href={job.downloadUrl}
-              download
-              className="flex-1 rounded-md border border-neutral-700 py-1.5 text-center text-xs hover:bg-neutral-800"
-            >
-              ダウンロード
-            </a>
-          )}
+          <DownloadButton
+            job={job}
+            className="flex-1 rounded-md border border-neutral-700 py-1.5 text-center text-xs hover:bg-neutral-800 disabled:opacity-50"
+          />
           <button
             onClick={handleDelete}
             disabled={deleting}

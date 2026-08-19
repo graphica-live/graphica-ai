@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { uploadObject } from "@/lib/storage/storage-service";
+import { videoObjectKey as buildVideoObjectKey } from "@/lib/jobs/video-naming";
 import { refundCreditsWithin } from "@/lib/credits/ledger";
 import type { VideoGenerationStatusResult } from "@/lib/video-provider/types";
 
@@ -20,7 +21,7 @@ export async function completeJob(jobId: string, result: VideoGenerationStatusRe
   }
 
   const video = await fetchBytes(result.videoUrl);
-  const videoObjectKey = `generations/${jobId}/video.mp4`;
+  const videoObjectKey = buildVideoObjectKey(jobId);
   await uploadObject(videoObjectKey, video.bytes, video.contentType);
 
   let thumbnailObjectKey: string | undefined;

@@ -5,7 +5,7 @@ import {
   getPresignedDownloadUrl,
   getPresignedAttachmentUrl,
 } from "@/lib/storage/storage-service";
-import { videoDownloadFilename } from "@/lib/jobs/download-filename";
+import { videoDownloadFilename } from "@/lib/jobs/video-naming";
 
 const PAGE_SIZE = 24;
 
