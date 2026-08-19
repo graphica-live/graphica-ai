@@ -13,7 +13,11 @@ const MODEL = "dreamina-seedance-2-5-260628";
 
 type ContentItem =
   | { type: "text"; text: string }
-  | { type: "image_url"; image_url: { url: string }; role: "reference_image" | "last_frame" }
+  | {
+      type: "image_url";
+      image_url: { url: string };
+      role: "reference_image" | "first_frame" | "last_frame";
+    }
   | { type: "video_url"; video_url: { url: string }; role: "reference_video" };
 
 interface DreaminaSubmitBody {
@@ -45,14 +49,20 @@ interface DreaminaTaskResponse extends DreaminaErrorResponse {
  * - resolution/ratio/duration はトップレベルのJSONパラメータとして送る
  *   (プロンプト文字列への `--flag` 埋め込みは公式リファレンスに存在しない)。
  * - camera_fixed はSupported modelsにSeedance 2.5が含まれないため送信しない。
- * - endFrameImageUrl(first/last-frame)使用時、Seedance 2.5は先頭フレームの
- *   アスペクト比を自動維持し ratio は `adaptive` 固定のみサポートされる。
+ * - 公式リファレンスは以下の3シナリオを "mutually exclusive scenarios and cannot be
+ *   mixed" と明記しており、混在させられない(呼び出し側でバリデーション済みの前提)。
+ *     1. image-to-video (first frame)          : first_frame 1枚
+ *     2. image-to-video (first and last frames): first_frame + last_frame
+ *     3. omni reference-to-video               : reference_image / reference_video
+ *   したがって last_frame は必ず first_frame とセットで送る。last_frame 単独は
+ *   シナリオ2の必須要件(first_frame を含むこと)を満たさず不正。
+ * - firstFrameImageUrl 使用時、Seedance 2.5は先頭フレームのアスペクト比を自動維持し
+ *   ratio は `adaptive` 固定のみサポートされる。
  * - referenceVideos(omni reference-to-video)使用時は `omni_reference_task_type:
  *   "reference"` を明示する。省略(=auto)だとプロンプト文言次第でedit/extendに
  *   誤判定され `InvalidParameter.TaskTypeMismatch` になりうるため常に明示する。
- * - endFrameImageUrl と referenceVideos/referenceImages(reference_video/
- *   reference_image role)は公式に "mutually exclusive" と明記されており併用不可
- *   (呼び出し側でバリデーション済みの前提)。
+ * - content の text は公式に optional ("Text (optional) + image")。image to video
+ *   ではプロンプト未入力を許容するため、空文字の text item も送信する。
  * - generate_audio はトップレベルのJSONブール値として送る。省略時のAPI既定値が
  *   trueかは公式リファレンスで明示されていないため、常に明示的に送信する。
  */
@@ -62,6 +72,13 @@ export function buildDreaminaRequestBody(req: VideoGenerationRequest): DreaminaS
 
   for (const image of req.referenceImages) {
     content.push({ type: "image_url", image_url: { url: image.url }, role: "reference_image" });
+  }
+  if (req.firstFrameImageUrl) {
+    content.push({
+      type: "image_url",
+      image_url: { url: req.firstFrameImageUrl },
+      role: "first_frame",
+    });
   }
   if (req.endFrameImageUrl) {
     content.push({ type: "image_url", image_url: { url: req.endFrameImageUrl }, role: "last_frame" });
@@ -74,7 +91,7 @@ export function buildDreaminaRequestBody(req: VideoGenerationRequest): DreaminaS
     model: MODEL,
     content,
     resolution: req.resolution,
-    ratio: req.endFrameImageUrl ? "adaptive" : req.aspectRatio,
+    ratio: req.firstFrameImageUrl ? "adaptive" : req.aspectRatio,
     duration: req.durationSeconds,
     generate_audio: req.generateAudio,
     ...(req.referenceVideos.length > 0 ? { omni_reference_task_type: "reference" as const } : {}),

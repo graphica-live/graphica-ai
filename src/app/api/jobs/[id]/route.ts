@@ -24,6 +24,13 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     const referenceVideoUrls = await Promise.all(
       job.referenceVideoKeys.map((key) => getPresignedDownloadUrl(key))
     );
+    // 「引用」導線で image to video ジョブの入力画像を復元するために返す
+    const firstFrameImageUrl = job.firstFrameImageKey
+      ? await getPresignedDownloadUrl(job.firstFrameImageKey)
+      : undefined;
+    const endFrameImageUrl = job.endFrameImageKey
+      ? await getPresignedDownloadUrl(job.endFrameImageKey)
+      : undefined;
 
     return NextResponse.json({
       ...job,
@@ -31,6 +38,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       thumbnailUrl,
       referenceImageUrls,
       referenceVideoUrls,
+      firstFrameImageUrl,
+      endFrameImageUrl,
     });
   } catch (err) {
     if (err instanceof UnauthorizedError) {

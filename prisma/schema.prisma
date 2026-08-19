@@ -121,6 +121,7 @@ model GenerationJob {
   prompt             String   @db.Text
   referenceImageKeys String[]
   referenceVideoKeys String[] @default([])
+  firstFrameImageKey String?
   endFrameImageKey   String?
   resolution         String
   durationSeconds    Int

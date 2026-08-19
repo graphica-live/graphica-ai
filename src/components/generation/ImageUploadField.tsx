@@ -9,16 +9,21 @@ interface UploadedImage {
 }
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/bmp", "image/tiff", "image/gif"];
-const MAX_IMAGES = 9;
+const DEFAULT_MAX_IMAGES = 9;
 
 export function ImageUploadField({
   images,
   onChange,
   label = "参照画像",
+  maxImages = DEFAULT_MAX_IMAGES,
+  /** @image1 バッジとメンション説明を表示するか。先頭/末尾フレーム用途では無意味なのでfalseにする */
+  showTag = true,
 }: {
   images: UploadedImage[];
   onChange: (images: UploadedImage[]) => void;
   label?: string;
+  maxImages?: number;
+  showTag?: boolean;
 }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +65,7 @@ export function ImageUploadField({
     setError(null);
     setUploading(true);
     try {
-      const remaining = MAX_IMAGES - images.length;
+      const remaining = maxImages - images.length;
       const filesToUpload = Array.from(files).slice(0, remaining);
 
       const uploaded: UploadedImage[] = [];
@@ -106,11 +111,13 @@ export function ImageUploadField({
   return (
     <div>
       <p className="mb-2 text-sm font-medium text-neutral-300">
-        {label} <span className="text-neutral-500">({images.length}/{MAX_IMAGES})</span>
+        {label} <span className="text-neutral-500">({images.length}/{maxImages})</span>
       </p>
       {images.length > 0 && (
         <p className="mb-2 text-xs text-neutral-500">
-          プロンプト内で @image1 のように入力すると、対応する画像を参照として指定できます。画像をクリックすると差し替えられます
+          {showTag
+            ? "プロンプト内で @image1 のように入力すると、対応する画像を参照として指定できます。画像をクリックすると差し替えられます"
+            : "画像をクリックすると差し替えられます"}
         </p>
       )}
       <div className="flex flex-wrap gap-3">
@@ -128,9 +135,11 @@ export function ImageUploadField({
                 差し替え
               </span>
             </button>
-            <span className="pointer-events-none absolute bottom-0.5 left-0.5 rounded bg-black/70 px-1 text-[10px] leading-4 text-white">
-              {referenceImageTag(i)}
-            </span>
+            {showTag && (
+              <span className="pointer-events-none absolute bottom-0.5 left-0.5 rounded bg-black/70 px-1 text-[10px] leading-4 text-white">
+                {referenceImageTag(i)}
+              </span>
+            )}
             <button
               type="button"
               onClick={() => removeImage(img.key)}
@@ -140,7 +149,7 @@ export function ImageUploadField({
             </button>
           </div>
         ))}
-        {images.length < MAX_IMAGES && (
+        {images.length < maxImages && (
           <button
             type="button"
             disabled={uploading}
