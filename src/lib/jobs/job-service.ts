@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { uploadObject } from "@/lib/storage/storage-service";
-import { refundCredits } from "@/lib/credits/ledger";
+import { refundCreditsWithin } from "@/lib/credits/ledger";
 import type { VideoGenerationStatusResult } from "@/lib/video-provider/types";
 
 async function fetchBytes(url: string): Promise<{ bytes: Buffer; contentType: string }> {
@@ -30,8 +30,10 @@ export async function completeJob(jobId: string, result: VideoGenerationStatusRe
     await uploadObject(thumbnailObjectKey, thumbnail.bytes, thumbnail.contentType);
   }
 
-  await prisma.generationJob.update({
-    where: { id: jobId },
+  // 既に失敗確定(=クレジット返還済み)のジョブを完了へ巻き戻すと、
+  // 返還と生成物受け取りが二重取りになるため未完了状態のジョブのみ完了にする。
+  const updated = await prisma.generationJob.updateMany({
+    where: { id: jobId, status: { in: ["PENDING", "PROCESSING"] } },
     data: {
       status: "COMPLETED",
       videoObjectKey,
@@ -40,13 +42,36 @@ export async function completeJob(jobId: string, result: VideoGenerationStatusRe
       actualTotalTokens: result.usage?.totalTokens,
     },
   });
+  if (updated.count === 0) {
+    console.warn(
+      `[job-service] job ${jobId} は既に終端状態のため完了として記録しませんでした`
+    );
+  }
 }
 
-/** ジョブを失敗として記録し、消費済みクレジットを返還する。 */
+/**
+ * ジョブを失敗として記録し、消費済みクレジットをオーナーへ返還する。
+ *
+ * 状態遷移と返還を同一トランザクションで行い、対象を未完了(PENDING/PROCESSING)の
+ * ジョブに限定する。これにより「失敗として記録されたのに残高が戻らない」状態と、
+ * ポーラーの再実行や複数インスタンスからの同時呼び出しによる二重返還の双方を防ぐ。
+ */
 export async function failJob(jobId: string, errorMessage: string) {
-  const job = await prisma.generationJob.update({
-    where: { id: jobId },
-    data: { status: "FAILED", providerError: errorMessage, completedAt: new Date() },
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.generationJob.updateMany({
+      where: { id: jobId, status: { in: ["PENDING", "PROCESSING"] } },
+      data: { status: "FAILED", providerError: errorMessage, completedAt: new Date() },
+    });
+    // 既に他の経路で終端状態になっている場合は返還済みなので何もしない
+    if (updated.count === 0) return;
+
+    const job = await tx.generationJob.findUniqueOrThrow({ where: { id: jobId } });
+    await refundCreditsWithin(
+      tx,
+      job.userId,
+      job.creditCost,
+      job.id,
+      "生成失敗によるクレジット返還"
+    );
   });
-  await refundCredits(job.userId, job.creditCost, job.id, "生成失敗によるクレジット返還");
 }
