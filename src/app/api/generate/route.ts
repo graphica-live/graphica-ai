@@ -4,7 +4,13 @@ import { requireUser, UnauthorizedError } from "@/lib/admin/guard";
 import { InsufficientCreditsError } from "@/lib/credits/ledger";
 import { createGenerationBatch } from "@/lib/jobs/create-generation-batch";
 import { prisma } from "@/lib/prisma";
-import { RESOLUTIONS, ASPECT_RATIOS, ADAPTIVE_ASPECT_RATIO } from "@/lib/generation/options";
+import {
+  RESOLUTIONS,
+  ASPECT_RATIOS,
+  ADAPTIVE_ASPECT_RATIO,
+  GENERATION_MODES,
+  GENERATION_MODE_LABELS,
+} from "@/lib/generation/options";
 
 // BytePlus公式リファレンスは image-to-video(first/last frame)と omni reference-to-video を
 // "mutually exclusive scenarios and cannot be mixed" と定義している。UIのタブと同じ粒度で
@@ -12,7 +18,7 @@ import { RESOLUTIONS, ASPECT_RATIOS, ADAPTIVE_ASPECT_RATIO } from "@/lib/generat
 // mode未指定は従来リクエスト互換のため "reference" とみなす。
 const requestSchema = z
   .object({
-    mode: z.enum(["reference", "image"]).default("reference"),
+    mode: z.enum(GENERATION_MODES).default("reference"),
     prompt: z.string().max(5000).default(""),
     referenceImageKeys: z.array(z.string()).max(9).default([]),
     referenceVideoKeys: z.array(z.string()).max(10).default([]),
@@ -66,8 +72,21 @@ export async function POST(req: Request) {
 
     const limits = await prisma.user.findUniqueOrThrow({
       where: { id: user.id },
-      select: { allowedResolutions: true, allowedDurations: true, allowedAspectRatios: true },
+      select: {
+        allowedResolutions: true,
+        allowedDurations: true,
+        allowedAspectRatios: true,
+        allowedGenerationModes: true,
+      },
     });
+    if (!limits.allowedGenerationModes.includes(body.mode)) {
+      return NextResponse.json(
+        {
+          error: `「${GENERATION_MODE_LABELS[body.mode]}」はこのアカウントでは利用できません`,
+        },
+        { status: 403 }
+      );
+    }
     // 画像から生成する場合、アスペクト比は先頭フレーム画像に追従する adaptive 固定でユーザーが
     // 選択できないため、許可リスト検証の対象外とする。
     const aspectRatioAllowed =

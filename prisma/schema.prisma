@@ -43,6 +43,9 @@ model User {
   allowedResolutions  String[] @default(["480p"])
   allowedDurations    Int[]    @default([5])
   allowedAspectRatios String[] @default(["4:3"])
+  // 利用できる生成モード（reference: テキスト・参照から生成 / image: 画像から生成）。
+  // 既存ユーザーは両モードを使えていたため、既定は両方許可とする。
+  allowedGenerationModes String[] @default(["reference", "image"])
 
   accounts               Account[]
   sessions               Session[]

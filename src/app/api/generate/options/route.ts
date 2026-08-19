@@ -7,7 +7,12 @@ export async function GET() {
     const user = await requireUser();
     const limits = await prisma.user.findUniqueOrThrow({
       where: { id: user.id },
-      select: { allowedResolutions: true, allowedDurations: true, allowedAspectRatios: true },
+      select: {
+        allowedResolutions: true,
+        allowedDurations: true,
+        allowedAspectRatios: true,
+        allowedGenerationModes: true,
+      },
     });
     return NextResponse.json(limits);
   } catch (err) {

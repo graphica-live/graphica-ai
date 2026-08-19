@@ -14,23 +14,22 @@ import {
   DURATIONS,
   ASPECT_RATIOS,
   ADAPTIVE_ASPECT_RATIO,
+  GENERATION_MODES,
+  GENERATION_MODE_LABELS,
+  type GenerationMode,
 } from "@/lib/generation/options";
 import { referenceImageTag, referenceVideoTag } from "@/lib/generation/mention";
 
 // BytePlus公式リファレンス上、image-to-video(先頭/末尾フレーム)と
 // omni reference-to-video(参照画像・参照動画)は排他シナリオで併用できない。
 // タブの境界をAPIの排他境界と一致させ、入力段階で混在を起こさないようにする。
-type GenerationMode = "reference" | "image";
-
-const MODE_TABS: { value: GenerationMode; label: string }[] = [
-  { value: "reference", label: "テキスト・参照から生成" },
-  { value: "image", label: "画像から生成" },
-];
+// モードの値とラベルは管理画面の許可設定と共有するため @/lib/generation/options に置く。
 
 interface GenerationOptionLimits {
   allowedResolutions: string[];
   allowedDurations: number[];
   allowedAspectRatios: string[];
+  allowedGenerationModes: string[];
 }
 
 interface PricingRule {
@@ -98,6 +97,10 @@ export function GenerationForm() {
     () => ASPECT_RATIOS.filter((a) => optionLimits?.allowedAspectRatios.includes(a) ?? true),
     [optionLimits]
   );
+  const allowedModes = useMemo(
+    () => GENERATION_MODES.filter((m) => optionLimits?.allowedGenerationModes.includes(m) ?? true),
+    [optionLimits]
+  );
 
   // 許可設定のロード後、選択中の値が対象外なら許可された先頭の値に補正する
   useEffect(() => {
@@ -111,7 +114,11 @@ export function GenerationForm() {
     if (allowedAspectRatios.length > 0 && !allowedAspectRatios.includes(aspectRatio)) {
       setAspectRatio(allowedAspectRatios[0]);
     }
-  }, [optionLimits, allowedResolutions, allowedDurations, allowedAspectRatios, resolution, durationSeconds, aspectRatio]);
+    // 「引用」プリフィルで許可外モードが選ばれた場合もここで許可された先頭モードへ戻す
+    if (allowedModes.length > 0 && !allowedModes.includes(mode)) {
+      setMode(allowedModes[0]);
+    }
+  }, [optionLimits, allowedResolutions, allowedDurations, allowedAspectRatios, allowedModes, resolution, durationSeconds, aspectRatio, mode]);
 
   // リロード後も直近の生成状況(生成中/生成済み)を表示するため、初回マウント時に直近ジョブを読み込む
   useEffect(() => {
@@ -304,28 +311,33 @@ export function GenerationForm() {
     <div className="mx-auto max-w-3xl px-6 py-10">
       <h1 className="text-xl font-semibold">動画生成</h1>
 
-      <div
-        role="tablist"
-        aria-label="生成モード"
-        className="mt-6 inline-flex rounded-md border border-neutral-800 bg-neutral-900 p-1"
-      >
-        {MODE_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            type="button"
-            role="tab"
-            aria-selected={mode === tab.value}
-            onClick={() => setMode(tab.value)}
-            className={`rounded px-4 py-2 text-sm font-medium transition-colors ${
-              mode === tab.value
-                ? "bg-neutral-100 text-neutral-900"
-                : "text-neutral-400 hover:text-neutral-200"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {/* 管理画面で1モードしか許可されていない場合、切り替え先が無いのでタブではなくモード名だけ示す */}
+      {allowedModes.length > 1 ? (
+        <div
+          role="tablist"
+          aria-label="生成モード"
+          className="mt-6 inline-flex rounded-md border border-neutral-800 bg-neutral-900 p-1"
+        >
+          {allowedModes.map((value) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={mode === value}
+              onClick={() => setMode(value)}
+              className={`rounded px-4 py-2 text-sm font-medium transition-colors ${
+                mode === value
+                  ? "bg-neutral-100 text-neutral-900"
+                  : "text-neutral-400 hover:text-neutral-200"
+              }`}
+            >
+              {GENERATION_MODE_LABELS[value]}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-6 text-sm text-neutral-400">{GENERATION_MODE_LABELS[mode]}</p>
+      )}
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-6">
         {isImageMode ? (
