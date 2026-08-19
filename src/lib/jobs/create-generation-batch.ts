@@ -13,6 +13,7 @@ export interface CreateGenerationBatchInput {
   prompt: string;
   referenceImageKeys: string[];
   referenceVideoKeys: string[];
+  firstFrameImageKey?: string;
   endFrameImageKey?: string;
   resolution: string;
   durationSeconds: number;
@@ -60,6 +61,7 @@ export async function createGenerationBatch(input: CreateGenerationBatchInput) {
           prompt: input.prompt,
           referenceImageKeys: input.referenceImageKeys,
           referenceVideoKeys: input.referenceVideoKeys,
+          firstFrameImageKey: input.firstFrameImageKey,
           endFrameImageKey: input.endFrameImageKey,
           resolution: input.resolution,
           durationSeconds: input.durationSeconds,
@@ -98,6 +100,9 @@ export async function createGenerationBatch(input: CreateGenerationBatchInput) {
     tag: referenceVideoTag(i),
     url,
   }));
+  const firstFrameImageUrl = input.firstFrameImageKey
+    ? await getPresignedDownloadUrl(input.firstFrameImageKey)
+    : undefined;
   const endFrameImageUrl = input.endFrameImageKey
     ? await getPresignedDownloadUrl(input.endFrameImageKey)
     : undefined;
@@ -109,6 +114,7 @@ export async function createGenerationBatch(input: CreateGenerationBatchInput) {
           prompt: input.prompt,
           referenceImages,
           referenceVideos,
+          firstFrameImageUrl,
           endFrameImageUrl,
           resolution: input.resolution,
           durationSeconds: input.durationSeconds,

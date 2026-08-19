@@ -20,6 +20,7 @@ export interface CostSample {
   resolution: string;
   aspectRatio: string;
   hasReferenceImages: boolean;
+  hasFirstFrame: boolean;
   hasEndFrame: boolean;
   avgTokensPerSecond: number;
   sampleCount: number;
@@ -30,6 +31,7 @@ export interface EstimatePattern {
   aspectRatio: string;
   durationSeconds: number;
   hasReferenceImages: boolean;
+  hasFirstFrame: boolean;
   hasEndFrame: boolean;
 }
 
@@ -49,6 +51,7 @@ export function estimateCostJpy(samples: CostSample[], pattern: EstimatePattern)
       s.resolution === pattern.resolution &&
       s.aspectRatio === pattern.aspectRatio &&
       s.hasReferenceImages === pattern.hasReferenceImages &&
+      s.hasFirstFrame === pattern.hasFirstFrame &&
       s.hasEndFrame === pattern.hasEndFrame
   );
   const rate = RATE_USD_PER_MILLION_TOKENS[pattern.resolution];

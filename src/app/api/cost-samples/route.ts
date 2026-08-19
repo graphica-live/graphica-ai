@@ -13,6 +13,7 @@ export async function GET() {
         aspectRatio: true,
         durationSeconds: true,
         referenceImageKeys: true,
+        firstFrameImageKey: true,
         endFrameImageKey: true,
         actualTotalTokens: true,
       },
@@ -22,8 +23,9 @@ export async function GET() {
     for (const job of jobs) {
       if (!job.actualTotalTokens || job.durationSeconds <= 0) continue;
       const hasReferenceImages = job.referenceImageKeys.length > 0;
+      const hasFirstFrame = job.firstFrameImageKey != null;
       const hasEndFrame = job.endFrameImageKey != null;
-      const key = `${job.resolution}|${job.aspectRatio}|${hasReferenceImages}|${hasEndFrame}`;
+      const key = `${job.resolution}|${job.aspectRatio}|${hasReferenceImages}|${hasFirstFrame}|${hasEndFrame}`;
       const tokensPerSecond = job.actualTotalTokens / job.durationSeconds;
 
       const existing = groups.get(key);
@@ -38,6 +40,7 @@ export async function GET() {
             resolution: job.resolution,
             aspectRatio: job.aspectRatio,
             hasReferenceImages,
+            hasFirstFrame,
             hasEndFrame,
             avgTokensPerSecond: 0,
             sampleCount: 0,

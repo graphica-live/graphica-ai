@@ -14,6 +14,9 @@ export interface VideoGenerationRequest {
   prompt: string;
   referenceImages: ReferenceImage[];
   referenceVideos: ReferenceVideo[];
+  /** image to video の先頭フレーム画像。指定時は referenceImages/referenceVideos と併用不可 */
+  firstFrameImageUrl?: string;
+  /** image to video の末尾フレーム画像。firstFrameImageUrl とセットでのみ指定できる */
   endFrameImageUrl?: string;
   resolution: string;
   durationSeconds: number;
