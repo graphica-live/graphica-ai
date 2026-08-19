@@ -15,6 +15,7 @@ interface Staff {
   allowedResolutions: string[];
   allowedDurations: number[];
   allowedAspectRatios: string[];
+  allowedGenerationModes: string[];
 }
 
 export function StaffDetail({ staffId }: { staffId: string }) {
@@ -69,6 +70,7 @@ export function StaffDetail({ staffId }: { staffId: string }) {
           allowedResolutions={staff.allowedResolutions}
           allowedDurations={staff.allowedDurations}
           allowedAspectRatios={staff.allowedAspectRatios}
+          allowedGenerationModes={staff.allowedGenerationModes}
           onSaved={load}
         />
       </div>

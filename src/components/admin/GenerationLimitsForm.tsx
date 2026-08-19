@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RESOLUTIONS, DURATIONS, ASPECT_RATIOS } from "@/lib/generation/options";
+import {
+  RESOLUTIONS,
+  DURATIONS,
+  ASPECT_RATIOS,
+  GENERATION_MODES,
+  GENERATION_MODE_LABELS,
+} from "@/lib/generation/options";
 
 function toggle<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -12,17 +18,20 @@ export function GenerationLimitsForm({
   allowedResolutions,
   allowedDurations,
   allowedAspectRatios,
+  allowedGenerationModes,
   onSaved,
 }: {
   staffId: string;
   allowedResolutions: string[];
   allowedDurations: number[];
   allowedAspectRatios: string[];
+  allowedGenerationModes: string[];
   onSaved: () => void;
 }) {
   const [resolutions, setResolutions] = useState(allowedResolutions);
   const [durations, setDurations] = useState(allowedDurations);
   const [aspectRatios, setAspectRatios] = useState(allowedAspectRatios);
+  const [modes, setModes] = useState(allowedGenerationModes);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,9 +39,14 @@ export function GenerationLimitsForm({
     setResolutions(allowedResolutions);
     setDurations(allowedDurations);
     setAspectRatios(allowedAspectRatios);
-  }, [allowedResolutions, allowedDurations, allowedAspectRatios]);
+    setModes(allowedGenerationModes);
+  }, [allowedResolutions, allowedDurations, allowedAspectRatios, allowedGenerationModes]);
 
-  const invalid = resolutions.length === 0 || durations.length === 0 || aspectRatios.length === 0;
+  const invalid =
+    resolutions.length === 0 ||
+    durations.length === 0 ||
+    aspectRatios.length === 0 ||
+    modes.length === 0;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -50,6 +64,7 @@ export function GenerationLimitsForm({
           allowedResolutions: resolutions,
           allowedDurations: durations,
           allowedAspectRatios: aspectRatios,
+          allowedGenerationModes: modes,
         }),
       });
       const data = await res.json();
@@ -68,6 +83,22 @@ export function GenerationLimitsForm({
       onSubmit={handleSubmit}
       className="space-y-4 rounded-lg border border-neutral-800 p-4"
     >
+      <div>
+        <p className="mb-2 text-xs text-neutral-500">生成モード</p>
+        <div className="flex flex-wrap gap-x-6 gap-y-1">
+          {GENERATION_MODES.map((m) => (
+            <label key={m} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={modes.includes(m)}
+                onChange={() => setModes((prev) => toggle(prev, m))}
+              />
+              {GENERATION_MODE_LABELS[m]}
+            </label>
+          ))}
+        </div>
+      </div>
+
       <div className="grid grid-cols-3 gap-4">
         <div>
           <p className="mb-2 text-xs text-neutral-500">解像度</p>
