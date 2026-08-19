@@ -5,6 +5,7 @@ import {
   getPresignedDownloadUrl,
   getPresignedAttachmentUrl,
 } from "@/lib/storage/storage-service";
+import { videoDownloadFilename } from "@/lib/jobs/download-filename";
 
 const PAGE_SIZE = 24;
 
@@ -31,7 +32,7 @@ export async function GET(req: Request) {
           ? await getPresignedDownloadUrl(job.videoObjectKey)
           : undefined,
         downloadUrl: job.videoObjectKey
-          ? await getPresignedAttachmentUrl(job.videoObjectKey, `graphica-video-${job.id}.mp4`)
+          ? await getPresignedAttachmentUrl(job.videoObjectKey, videoDownloadFilename(job.id))
           : undefined,
         thumbnailUrl: job.thumbnailObjectKey
           ? await getPresignedDownloadUrl(job.thumbnailObjectKey)
