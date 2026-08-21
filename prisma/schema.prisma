@@ -140,6 +140,9 @@ model GenerationJob {
   videoObjectKey     String?
   thumbnailObjectKey String?
 
+  // お気に入り(ピン止め)。null = 未ピン。ピン止め順に並べたいのでBooleanではなく日時で持つ。
+  pinnedAt DateTime?
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   startedAt   DateTime?
@@ -150,6 +153,7 @@ model GenerationJob {
   creditTx CreditTransaction[]
 
   @@index([userId, createdAt])
+  @@index([userId, pinnedAt])
   @@index([status])
   @@index([batchId])
 }

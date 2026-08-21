@@ -13,6 +13,8 @@ export interface HistoryJob {
   downloadUrl?: string;
   thumbnailUrl?: string;
   createdAt: string;
+  /** ピン止め日時。null / undefined は未ピン。 */
+  pinnedAt?: string | null;
 }
 
 const STATUS_LABEL: Record<HistoryJob["status"], string> = {
@@ -40,6 +42,56 @@ function DownloadButton({ job, className }: { job: HistoryJob; className: string
   return (
     <button onClick={handleClick} disabled={saving} className={className}>
       {saving ? "保存中…" : "ダウンロード"}
+    </button>
+  );
+}
+
+/** サムネイル右上に重ねるお気に入り(ピン止め)トグル。文字は出さず☆のみ。 */
+function PinButton({
+  pinned,
+  onToggle,
+}: {
+  pinned: boolean;
+  onToggle: () => void | Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  async function handleClick(e: React.MouseEvent) {
+    // 親のサムネイルクリック(ライトボックス展開)へ伝播させない
+    e.stopPropagation();
+    if (busy) return;
+    setBusy(true);
+    try {
+      await onToggle();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={busy}
+      aria-pressed={pinned}
+      aria-label={pinned ? "ピン止めを解除" : "ピン止めする"}
+      title={pinned ? "ピン止めを解除" : "ピン止めする"}
+      className={`absolute right-2 top-2 z-10 rounded-full bg-black/50 p-1.5 backdrop-blur-sm transition hover:bg-black/70 disabled:opacity-50 ${
+        pinned ? "text-amber-400" : "text-white/80 hover:text-white"
+      }`}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className="h-4 w-4"
+        fill={pinned ? "currentColor" : "none"}
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M12 3.2l2.7 5.47 6.04.88-4.37 4.26 1.03 6.01L12 17l-5.4 2.82 1.03-6.01L3.26 9.55l6.04-.88L12 3.2z" />
+      </svg>
     </button>
   );
 }
@@ -93,9 +145,11 @@ function VideoLightbox({ job, onClose }: { job: HistoryJob; onClose: () => void 
 export function GenerationCard({
   job,
   onDeleted,
+  onPinChanged,
 }: {
   job: HistoryJob;
   onDeleted: (id: string) => void;
+  onPinChanged?: (id: string, pinnedAt: string | null) => void;
 }) {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -126,6 +180,24 @@ export function GenerationCard({
 
   function handleReuse() {
     router.push(`/?fromJobId=${job.id}`);
+  }
+
+  const pinned = Boolean(job.pinnedAt);
+
+  async function handleTogglePin() {
+    const next = !pinned;
+    try {
+      const res = await fetch(`/api/jobs/${job.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinned: next }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      onPinChanged?.(job.id, data.pinnedAt ?? null);
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   const canExpand = job.status === "COMPLETED" && Boolean(job.videoUrl);
@@ -168,6 +240,7 @@ export function GenerationCard({
             {STATUS_LABEL[job.status]}
           </div>
         )}
+        <PinButton pinned={pinned} onToggle={handleTogglePin} />
       </div>
       <div className="p-3">
         <p className="line-clamp-2 text-xs text-neutral-400">{job.prompt}</p>
