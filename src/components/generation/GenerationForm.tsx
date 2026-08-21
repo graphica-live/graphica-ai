@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ImageUploadField, type UploadedImage } from "./ImageUploadField";
 import { VideoUploadField, type UploadedVideo } from "./VideoUploadField";
@@ -495,7 +496,17 @@ export function GenerationForm() {
 
       {jobs.length > 0 && (
         <div className="mt-10">
-          <h2 className="mb-4 text-sm font-medium text-neutral-300">生成状況</h2>
+          {/* 生成履歴への導線がアカウントメニュー内だけだと見つけにくいため、
+              直近ジョブの見出し行にも一覧へのリンクを置く */}
+          <div className="mb-4 flex items-baseline justify-between gap-4">
+            <h2 className="text-sm font-medium text-neutral-300">生成状況</h2>
+            <Link
+              href="/history"
+              className="shrink-0 text-xs text-neutral-400 underline-offset-4 hover:text-neutral-100 hover:underline"
+            >
+              生成履歴をすべて見る →
+            </Link>
+          </div>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
             {jobs.map((job) => (
               <JobStatusCard key={job.id} job={job} />
