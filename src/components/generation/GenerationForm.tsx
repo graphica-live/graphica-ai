@@ -474,6 +474,8 @@ export function GenerationForm() {
 
         <CostEstimate
           cost={totalCost}
+          costPerVideo={costPerVideo}
+          batchSize={batchSize}
           balance={balance}
           apiCostEstimateJpy={apiCostEstimateJpy}
         />
