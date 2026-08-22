@@ -10,6 +10,8 @@ import {
   ADAPTIVE_ASPECT_RATIO,
   GENERATION_MODES,
   GENERATION_MODE_LABELS,
+  DURATION_MIN_SECONDS,
+  DURATION_MAX_SECONDS,
 } from "@/lib/generation/options";
 
 // BytePlus公式リファレンスは image-to-video(first/last frame)と omni reference-to-video を
@@ -25,7 +27,8 @@ const requestSchema = z
     firstFrameImageKey: z.string().optional(),
     endFrameImageKey: z.string().optional(),
     resolution: z.enum(RESOLUTIONS),
-    durationSeconds: z.number().int().min(1).max(30),
+    // Seedance 2.5 が受け付ける duration の範囲。スタッフごとの範囲制限は別途DBの値で検証する。
+    durationSeconds: z.number().int().min(DURATION_MIN_SECONDS).max(DURATION_MAX_SECONDS),
     aspectRatio: z.enum(ASPECT_RATIOS).optional(),
     generateAudio: z.boolean().default(true),
     batchSize: z.number().int().min(1).max(10).default(1),
@@ -74,7 +77,8 @@ export async function POST(req: Request) {
       where: { id: user.id },
       select: {
         allowedResolutions: true,
-        allowedDurations: true,
+        minDurationSeconds: true,
+        maxDurationSeconds: true,
         allowedAspectRatios: true,
         allowedGenerationModes: true,
       },
@@ -91,9 +95,13 @@ export async function POST(req: Request) {
     // 選択できないため、許可リスト検証の対象外とする。
     const aspectRatioAllowed =
       body.mode === "image" || limits.allowedAspectRatios.includes(body.aspectRatio!);
+    // 動画長はスタッフごとに下限・上限の範囲で制限する(UIのスライダーと同じ境界)
+    const durationAllowed =
+      body.durationSeconds >= limits.minDurationSeconds &&
+      body.durationSeconds <= limits.maxDurationSeconds;
     if (
       !limits.allowedResolutions.includes(body.resolution) ||
-      !limits.allowedDurations.includes(body.durationSeconds) ||
+      !durationAllowed ||
       !aspectRatioAllowed
     ) {
       return NextResponse.json(

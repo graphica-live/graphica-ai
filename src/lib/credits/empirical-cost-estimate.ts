@@ -35,6 +35,8 @@ export interface EstimatePattern {
   hasEndFrame: boolean;
 }
 
+// 生成フォームは4〜30秒を1秒刻みで選べるため、4秒だけは参照値(5秒)の外側になり線形外挿になる。
+// 5秒との差はごく小さく、実測サンプルが貯まればそちらが優先されるため、この近似で扱う。
 function interpolateUsd(table: { at5s: number; at30s: number }, durationSeconds: number): number {
   const ratio = (durationSeconds - 5) / (30 - 5);
   return table.at5s + (table.at30s - table.at5s) * ratio;
