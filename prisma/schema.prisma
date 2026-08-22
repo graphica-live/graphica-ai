@@ -100,7 +100,13 @@ model VerificationToken {
 
 // 非推奨。クレジット消費額はAPI使用料原価(src/lib/credits/cost.ts)から算出するようになり、
 // このテーブルは課金に使われていない。デプロイのローリング中に残る旧インスタンスが
-// 参照するため互換期間として残置しており、/api/pricing ごと次のリリースで削除すること。
+// 参照するため互換期間として残置している。
+//
+// 削除は2リリースに分けること。1リリースでまとめると、切替中の旧インスタンス(まだ
+// /api/pricing を持つ版)がこのテーブルを参照して壊れる。
+//   1. /api/pricing と参照コードだけを削除する。このモデルは残す(migrationを出さない)
+//   2. そのリリースが本番に行き渡ってから、このモデルを削除して DROP TABLE を出す
+// 詳細は CLAUDE.md の「DB Migration Rule（expand / contract）」を参照。
 // 単価テーブル: provider(プロバイダ) x resolution x hasVideoInput -> 秒あたりクレジット(円)
 model PricingRule {
   id              String   @id @default(cuid())
