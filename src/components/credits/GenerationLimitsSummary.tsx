@@ -1,6 +1,5 @@
 import {
   RESOLUTIONS,
-  DURATIONS,
   ASPECT_RATIOS,
   GENERATION_MODES,
   GENERATION_MODE_LABELS,
@@ -39,12 +38,14 @@ function LimitGroup({
 
 export function GenerationLimitsSummary({
   allowedResolutions,
-  allowedDurations,
+  minDurationSeconds,
+  maxDurationSeconds,
   allowedAspectRatios,
   allowedGenerationModes,
 }: {
   allowedResolutions: string[];
-  allowedDurations: number[];
+  minDurationSeconds: number;
+  maxDurationSeconds: number;
   allowedAspectRatios: string[];
   allowedGenerationModes: string[];
 }) {
@@ -66,14 +67,15 @@ export function GenerationLimitsSummary({
           allowed: allowedResolutions.includes(r),
         }))}
       />
-      <LimitGroup
-        label="長さ"
-        options={DURATIONS.map((d) => ({
-          key: String(d),
-          text: `${d}秒`,
-          allowed: allowedDurations.includes(d),
-        }))}
-      />
+      {/* 長さは1秒刻みのスライダーで選ぶため、選択肢の羅列ではなく許可範囲を示す */}
+      <div>
+        <p className="mb-2 text-xs text-neutral-500">長さ</p>
+        <span className="inline-block rounded-md border border-neutral-600 bg-neutral-800 px-2.5 py-1 text-sm text-neutral-100">
+          {minDurationSeconds >= maxDurationSeconds
+            ? `${minDurationSeconds}秒`
+            : `${minDurationSeconds}〜${maxDurationSeconds}秒(1秒刻み)`}
+        </span>
+      </div>
       <LimitGroup
         label="アスペクト比"
         options={ASPECT_RATIOS.map((a) => ({

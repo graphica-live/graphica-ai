@@ -13,7 +13,8 @@ export default async function CreditsPage() {
       select: {
         creditBalance: true,
         allowedResolutions: true,
-        allowedDurations: true,
+        minDurationSeconds: true,
+        maxDurationSeconds: true,
         allowedAspectRatios: true,
         allowedGenerationModes: true,
       },
@@ -57,7 +58,8 @@ export default async function CreditsPage() {
         <h2 className="mb-3 text-sm font-medium text-neutral-300">生成設定の制限</h2>
         <GenerationLimitsSummary
           allowedResolutions={user.allowedResolutions}
-          allowedDurations={user.allowedDurations}
+          minDurationSeconds={user.minDurationSeconds}
+          maxDurationSeconds={user.maxDurationSeconds}
           allowedAspectRatios={user.allowedAspectRatios}
           allowedGenerationModes={user.allowedGenerationModes}
         />

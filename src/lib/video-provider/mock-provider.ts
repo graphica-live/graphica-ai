@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import type { VideoGenerationProvider } from "./types";
-import { estimateSeedanceTokens } from "@/lib/credits/seedance-cost-estimate";
+import { estimateTokens } from "@/lib/credits/cost";
 
 // Dreamina API未接続でも動作確認できるように、実際のバイト取得先として
 // 公開されているサンプル動画を返す(egress/保存フローの検証用)。
@@ -49,9 +49,15 @@ export const mockProvider: VideoGenerationProvider = {
       };
     }
 
-    // 実測ベースのコスト概算パイプラインをmockでも検証できるよう、
-    // 数式ベースの概算トークン数を実測値の代わりに返す。
-    const tokens = estimateSeedanceTokens(job.resolution, job.durationSeconds);
+    // 完了時の差額精算をmockでも検証できるよう、数式ベースの概算トークン数を
+    // 実測値の代わりに返す。未知の解像度ではトークン数を報告せず、
+    // 仮押さえ額のまま確定する経路(usage未報告)を再現する。
+    let tokens: number | null = null;
+    try {
+      tokens = estimateTokens(job.resolution, job.durationSeconds);
+    } catch {
+      tokens = null;
+    }
     return {
       status: "completed",
       videoUrl: SAMPLE_VIDEO_URL,

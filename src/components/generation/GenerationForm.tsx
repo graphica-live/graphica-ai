@@ -8,12 +8,10 @@ import { VideoUploadField, type UploadedVideo } from "./VideoUploadField";
 import { MentionTextarea } from "./MentionTextarea";
 import { CostEstimate } from "./CostEstimate";
 import { JobStatusCard, type JobStatus } from "./JobStatusCard";
-import { estimateSeedanceCostJpy } from "@/lib/credits/seedance-cost-estimate";
-import { estimateCostJpy, type CostSample } from "@/lib/credits/empirical-cost-estimate";
+import { estimateCostJpy } from "@/lib/credits/cost";
 import {
   RESOLUTIONS,
   ASPECT_RATIOS,
-  ADAPTIVE_ASPECT_RATIO,
   GENERATION_MODES,
   GENERATION_MODE_LABELS,
   DURATION_MIN_SECONDS,
@@ -52,12 +50,6 @@ function isGenerationOptionLimits(value: unknown): value is GenerationOptionLimi
   );
 }
 
-interface PricingRule {
-  resolution: string;
-  hasVideoInput: boolean;
-  creditPerSecond: number;
-}
-
 const POLL_INTERVAL_MS = 3000;
 const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "CANCELED"]);
 const RECENT_JOBS_LIMIT = 3;
@@ -79,10 +71,8 @@ export function GenerationForm() {
   const [generateAudio, setGenerateAudio] = useState(true);
   const [batchSize, setBatchSize] = useState(1);
 
-  const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
-  const [costSamples, setCostSamples] = useState<CostSample[]>([]);
   const [balance, setBalance] = useState<number | null>(null);
-  const [pricingLoading, setPricingLoading] = useState(true);
+  const [optionsLoading, setOptionsLoading] = useState(true);
   const [optionLimits, setOptionLimits] = useState<GenerationOptionLimits | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
@@ -91,18 +81,14 @@ export function GenerationForm() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/pricing").then((r) => r.json()),
       fetch("/api/credits/balance").then((r) => r.json()),
       fetch("/api/generate/options").then((r) => r.json()),
-      fetch("/api/cost-samples").then((r) => r.json()),
     ])
-      .then(([rules, balanceRes, limits, samples]) => {
-        setPricingRules(rules);
+      .then(([balanceRes, limits]) => {
         setBalance(balanceRes.creditBalance);
         setOptionLimits(isGenerationOptionLimits(limits) ? limits : null);
-        setCostSamples(Array.isArray(samples) ? samples : []);
       })
-      .finally(() => setPricingLoading(false));
+      .finally(() => setOptionsLoading(false));
   }, []);
 
   const allowedResolutions = useMemo(
@@ -216,13 +202,16 @@ export function GenerationForm() {
   // 画像モードは先頭フレーム画像だけが必須。プロンプトは公式にoptionalなので空でも送信できる
   const inputReady = isImageMode ? firstFrame !== null : prompt.length > 0;
 
+  // サーバーが仮押さえするのと同じ式で概算する(@/lib/credits/cost)。
+  // 動画入力ありの場合は参照動画の尺が加算されるため実額はこれを上回ることがあり、
+  // 差額は生成完了時にサーバー側で精算される。
   const costPerVideo = useMemo(() => {
-    const rule = pricingRules.find(
-      (r) => r.resolution === resolution && r.hasVideoInput === hasVideoInput
-    );
-    if (!rule) return null;
-    return Math.ceil(durationSeconds * rule.creditPerSecond);
-  }, [pricingRules, resolution, durationSeconds, hasVideoInput]);
+    try {
+      return estimateCostJpy({ resolution, durationSeconds, hasVideoInput });
+    } catch {
+      return null;
+    }
+  }, [resolution, durationSeconds, hasVideoInput]);
 
   const totalCost = costPerVideo !== null ? costPerVideo * batchSize : null;
   const insufficient = totalCost !== null && balance !== null && totalCost > balance;
@@ -244,29 +233,6 @@ export function GenerationForm() {
           ],
     [isImageMode, referenceImages, referenceVideos]
   );
-
-  const apiCostEstimateJpy = useMemo(() => {
-    const perVideo =
-      estimateCostJpy(costSamples, {
-        resolution,
-        aspectRatio: isImageMode ? ADAPTIVE_ASPECT_RATIO : aspectRatio,
-        durationSeconds,
-        hasReferenceImages: !isImageMode && referenceImages.length > 0,
-        hasFirstFrame: isImageMode && firstFrame !== null,
-        hasEndFrame: isImageMode && endFrame !== null,
-      }) ?? estimateSeedanceCostJpy(resolution, durationSeconds);
-    return perVideo === null ? null : perVideo * batchSize;
-  }, [
-    costSamples,
-    resolution,
-    aspectRatio,
-    durationSeconds,
-    isImageMode,
-    referenceImages.length,
-    firstFrame,
-    endFrame,
-    batchSize,
-  ]);
 
   // 実行中ジョブのステータスをポーリングする
   useEffect(() => {
@@ -523,7 +489,6 @@ export function GenerationForm() {
           costPerVideo={costPerVideo}
           batchSize={batchSize}
           balance={balance}
-          apiCostEstimateJpy={apiCostEstimateJpy}
         />
 
         {submitError && (
@@ -534,7 +499,7 @@ export function GenerationForm() {
 
         <button
           type="submit"
-          disabled={submitting || !inputReady || insufficient || pricingLoading}
+          disabled={submitting || !inputReady || insufficient || optionsLoading}
           className="w-full rounded-md bg-neutral-100 py-3 text-sm font-semibold text-neutral-900 hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           {insufficient ? "クレジット残高が不足しています" : submitting ? "送信中..." : "生成"}
