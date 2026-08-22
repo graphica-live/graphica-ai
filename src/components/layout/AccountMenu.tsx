@@ -62,6 +62,13 @@ export function AccountMenu({
             ピン止めした生成履歴
           </Link>
           <Link
+            href="/credits"
+            className="block px-4 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
+            onClick={() => setOpen(false)}
+          >
+            クレジット履歴
+          </Link>
+          <Link
             href="/settings"
             className="block px-4 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
             onClick={() => setOpen(false)}
