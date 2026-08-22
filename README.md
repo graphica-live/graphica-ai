@@ -21,7 +21,7 @@
    npm run db:migrate
    npm run db:seed
    ```
-   シードにより`ADMIN_EMAIL`で指定したメールアドレスが管理者として登録され、初期単価テーブル(`PricingRule`)が投入される。
+   シードにより`ADMIN_EMAIL`で指定したメールアドレスが管理者として登録される。クレジット消費額はAPI使用料原価(`src/lib/credits/cost.ts`)から算出するため、単価テーブルの投入は不要。
 4. 開発サーバーを起動
    ```bash
    npm run dev

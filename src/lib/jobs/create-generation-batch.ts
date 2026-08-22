@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { prisma } from "@/lib/prisma";
-import { calculateCost } from "@/lib/credits/pricing";
+import { estimateCostJpy } from "@/lib/credits/cost";
 import { InsufficientCreditsError } from "@/lib/credits/ledger";
 import { getVideoProvider } from "@/lib/video-provider";
 import { getPresignedDownloadUrl } from "@/lib/storage/storage-service";
@@ -25,10 +25,13 @@ export interface CreateGenerationBatchInput {
 /**
  * クレジットを原子的に減算した上で生成ジョブ群を作成し、プロバイダへ送信する。
  * 残高不足の場合はDBを一切変更せず InsufficientCreditsError を投げる。
+ *
+ * ここで引くのはAPI使用料原価の概算(仮押さえ)。プロバイダが実トークン数を報告した
+ * 時点で completeJob が差額を精算し、最終的な消費額を実原価に一致させる。
  */
 export async function createGenerationBatch(input: CreateGenerationBatchInput) {
   const hasVideoInput = input.referenceVideoKeys.length > 0;
-  const costPerVideo = await calculateCost({
+  const costPerVideo = estimateCostJpy({
     resolution: input.resolution,
     durationSeconds: input.durationSeconds,
     hasVideoInput,

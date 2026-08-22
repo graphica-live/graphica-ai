@@ -93,6 +93,9 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+// 非推奨。クレジット消費額はAPI使用料原価(src/lib/credits/cost.ts)から算出するようになり、
+// このテーブルは課金に使われていない。デプロイのローリング中に残る旧インスタンスが
+// 参照するため互換期間として残置しており、/api/pricing ごと次のリリースで削除すること。
 // 単価テーブル: provider(プロバイダ) x resolution x hasVideoInput -> 秒あたりクレジット(円)
 model PricingRule {
   id              String   @id @default(cuid())
