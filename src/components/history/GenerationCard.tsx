@@ -13,8 +13,8 @@ export interface HistoryJob {
   downloadUrl?: string;
   thumbnailUrl?: string;
   createdAt: string;
-  /** ピン止め日時。null / undefined は未ピン。 */
-  pinnedAt?: string | null;
+  /** ピン止め(お気に入り)済みかどうか。 */
+  isPinned?: boolean;
 }
 
 const STATUS_LABEL: Record<HistoryJob["status"], string> = {
@@ -149,7 +149,7 @@ export function GenerationCard({
 }: {
   job: HistoryJob;
   onDeleted: (id: string) => void;
-  onPinChanged?: (id: string, pinnedAt: string | null) => void;
+  onPinChanged?: (id: string, isPinned: boolean) => void;
 }) {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -182,21 +182,27 @@ export function GenerationCard({
     router.push(`/?fromJobId=${job.id}`);
   }
 
-  const pinned = Boolean(job.pinnedAt);
+  const pinned = Boolean(job.isPinned);
 
   async function handleTogglePin() {
     const next = !pinned;
+    // 楽観更新はしない。ピン一覧では解除で行が消えるため、失敗時に元の位置へ
+    // 戻せる保証がない。サーバーが成功を返してから一覧へ反映する。
     try {
       const res = await fetch(`/api/jobs/${job.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pinned: next }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        alert(next ? "ピン止めできませんでした" : "ピン止めを解除できませんでした");
+        return;
+      }
       const data = await res.json();
-      onPinChanged?.(job.id, data.pinnedAt ?? null);
+      onPinChanged?.(job.id, Boolean(data.isPinned));
     } catch (err) {
       console.error(err);
+      alert("通信に失敗しました");
     }
   }
 

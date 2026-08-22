@@ -69,18 +69,19 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       return NextResponse.json({ error: "リクエストが不正です" }, { status: 400 });
     }
 
-    const pinnedAt = parsed.pinned ? new Date() : null;
-    // 所有者チェックをWHEREに含め、チェックと更新の間で所有者が変わる余地をなくす
+    // 所有者チェックをWHEREに含め、チェックと更新の間で所有者が変わる余地をなくす。
+    // 同じ値でのPATCH再送は結果が変わらない(冪等)。
     const result = await prisma.generationJob.updateMany({
       where: { id: params.id, userId: user.id },
-      data: { pinnedAt },
+      data: { isPinned: parsed.pinned },
     });
 
+    // 非所有者・不存在・DELETE済みはいずれも404
     if (result.count === 0) {
       return NextResponse.json({ error: "見つかりません" }, { status: 404 });
     }
 
-    return NextResponse.json({ id: params.id, pinnedAt });
+    return NextResponse.json({ id: params.id, isPinned: parsed.pinned });
   } catch (err) {
     if (err instanceof UnauthorizedError) {
       return NextResponse.json({ error: err.message }, { status: 401 });

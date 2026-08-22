@@ -28,12 +28,12 @@ export function GenerationGrid({ pinnedOnly = false }: { pinnedOnly?: boolean })
     setJobs((prev) => prev?.filter((j) => j.id !== id) ?? null);
   }
 
-  function handlePinChanged(id: string, pinnedAt: string | null) {
+  function handlePinChanged(id: string, isPinned: boolean) {
     setJobs((prev) => {
       if (!prev) return prev;
       // ピン止め一覧では解除された時点で対象外になるため取り除く
-      if (pinnedOnly && pinnedAt === null) return prev.filter((j) => j.id !== id);
-      return prev.map((j) => (j.id === id ? { ...j, pinnedAt } : j));
+      if (pinnedOnly && !isPinned) return prev.filter((j) => j.id !== id);
+      return prev.map((j) => (j.id === id ? { ...j, isPinned } : j));
     });
   }
 
@@ -41,7 +41,9 @@ export function GenerationGrid({ pinnedOnly = false }: { pinnedOnly?: boolean })
     return <p className="text-sm text-neutral-500">読み込み中...</p>;
   }
 
-  if (jobs.length === 0) {
+  // 表示中の全件を削除・ピン解除した場合でも、続きが残っていれば
+  // 「もっと見る」を出す(空状態で早期returnしない)
+  if (jobs.length === 0 && !nextCursor) {
     return (
       <p className="text-sm text-neutral-500">
         {pinnedOnly ? "ピン止めした生成物はまだありません。" : "まだ生成物がありません。"}

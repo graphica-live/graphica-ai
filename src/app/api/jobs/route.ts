@@ -20,12 +20,12 @@ export async function GET(req: Request) {
     const jobs = await prisma.generationJob.findMany({
       where: {
         userId: user.id,
-        ...(pinnedOnly ? { pinnedAt: { not: null } } : {}),
+        ...(pinnedOnly ? { isPinned: true } : {}),
       },
-      // cursorページングを決定的にするため id をタイブレーカーに使う
-      orderBy: pinnedOnly
-        ? [{ pinnedAt: "desc" }, { id: "desc" }]
-        : [{ createdAt: "desc" }, { id: "desc" }],
+      // ピン一覧も生成日時順にする。ソートキーがピン操作で変化しないため、
+      // 一覧を開いたままピンを解除してもcursorページングの境界がずれない。
+      // idはタイブレーカー。
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: PAGE_SIZE + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
