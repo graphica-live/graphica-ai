@@ -9,7 +9,8 @@ export async function GET() {
       where: { id: user.id },
       select: {
         allowedResolutions: true,
-        allowedDurations: true,
+        minDurationSeconds: true,
+        maxDurationSeconds: true,
         allowedAspectRatios: true,
         allowedGenerationModes: true,
       },

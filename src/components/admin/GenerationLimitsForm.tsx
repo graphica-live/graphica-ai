@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import {
   RESOLUTIONS,
-  DURATIONS,
   ASPECT_RATIOS,
   GENERATION_MODES,
   GENERATION_MODE_LABELS,
+  DURATION_MIN_SECONDS,
+  DURATION_MAX_SECONDS,
 } from "@/lib/generation/options";
 
 function toggle<T>(list: T[], value: T): T[] {
@@ -16,20 +17,24 @@ function toggle<T>(list: T[], value: T): T[] {
 export function GenerationLimitsForm({
   staffId,
   allowedResolutions,
-  allowedDurations,
+  minDurationSeconds,
+  maxDurationSeconds,
   allowedAspectRatios,
   allowedGenerationModes,
   onSaved,
 }: {
   staffId: string;
   allowedResolutions: string[];
-  allowedDurations: number[];
+  minDurationSeconds: number;
+  maxDurationSeconds: number;
   allowedAspectRatios: string[];
   allowedGenerationModes: string[];
   onSaved: () => void;
 }) {
   const [resolutions, setResolutions] = useState(allowedResolutions);
-  const [durations, setDurations] = useState(allowedDurations);
+  // 入力途中の空文字をNaN/0と取り違えないよう、秒数は文字列で保持して送信時に数値化する
+  const [minDuration, setMinDuration] = useState(String(minDurationSeconds));
+  const [maxDuration, setMaxDuration] = useState(String(maxDurationSeconds));
   const [aspectRatios, setAspectRatios] = useState(allowedAspectRatios);
   const [modes, setModes] = useState(allowedGenerationModes);
   const [submitting, setSubmitting] = useState(false);
@@ -37,21 +42,43 @@ export function GenerationLimitsForm({
 
   useEffect(() => {
     setResolutions(allowedResolutions);
-    setDurations(allowedDurations);
+    setMinDuration(String(minDurationSeconds));
+    setMaxDuration(String(maxDurationSeconds));
     setAspectRatios(allowedAspectRatios);
     setModes(allowedGenerationModes);
-  }, [allowedResolutions, allowedDurations, allowedAspectRatios, allowedGenerationModes]);
+  }, [
+    allowedResolutions,
+    minDurationSeconds,
+    maxDurationSeconds,
+    allowedAspectRatios,
+    allowedGenerationModes,
+  ]);
+
+  const parsedMin = Number(minDuration);
+  const parsedMax = Number(maxDuration);
+  const durationInvalid =
+    minDuration.trim() === "" ||
+    maxDuration.trim() === "" ||
+    !Number.isInteger(parsedMin) ||
+    !Number.isInteger(parsedMax) ||
+    parsedMin < DURATION_MIN_SECONDS ||
+    parsedMax > DURATION_MAX_SECONDS ||
+    parsedMin > parsedMax;
 
   const invalid =
     resolutions.length === 0 ||
-    durations.length === 0 ||
+    durationInvalid ||
     aspectRatios.length === 0 ||
     modes.length === 0;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (invalid) {
-      setError("各項目とも1つ以上選択してください");
+      setError(
+        durationInvalid
+          ? `長さは${DURATION_MIN_SECONDS}〜${DURATION_MAX_SECONDS}秒の整数で、下限≦上限にしてください`
+          : "各項目とも1つ以上選択してください"
+      );
       return;
     }
     setError(null);
@@ -62,14 +89,15 @@ export function GenerationLimitsForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           allowedResolutions: resolutions,
-          allowedDurations: durations,
+          minDurationSeconds: parsedMin,
+          maxDurationSeconds: parsedMax,
           allowedAspectRatios: aspectRatios,
           allowedGenerationModes: modes,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "保存に失敗しました");
+        setError(typeof data.error === "string" ? data.error : "保存に失敗しました");
         return;
       }
       onSaved();
@@ -116,19 +144,36 @@ export function GenerationLimitsForm({
           </div>
         </div>
         <div>
+          {/* 生成フォームは1秒刻みのスライダーなので、許可も個別値ではなく範囲で指定する */}
           <p className="mb-2 text-xs text-neutral-500">長さ(秒)</p>
-          <div className="space-y-1">
-            {DURATIONS.map((d) => (
-              <label key={d} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={durations.includes(d)}
-                  onChange={() => setDurations((prev) => toggle(prev, d))}
-                />
-                {d}秒
-              </label>
-            ))}
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              inputMode="numeric"
+              min={DURATION_MIN_SECONDS}
+              max={DURATION_MAX_SECONDS}
+              step={1}
+              value={minDuration}
+              onChange={(e) => setMinDuration(e.target.value)}
+              aria-label="長さの下限(秒)"
+              className="w-16 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm"
+            />
+            <span className="text-xs text-neutral-500">〜</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={DURATION_MIN_SECONDS}
+              max={DURATION_MAX_SECONDS}
+              step={1}
+              value={maxDuration}
+              onChange={(e) => setMaxDuration(e.target.value)}
+              aria-label="長さの上限(秒)"
+              className="w-16 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm"
+            />
           </div>
+          <p className="mt-1 text-xs text-neutral-600">
+            {DURATION_MIN_SECONDS}〜{DURATION_MAX_SECONDS}秒
+          </p>
         </div>
         <div>
           <p className="mb-2 text-xs text-neutral-500">アスペクト比</p>

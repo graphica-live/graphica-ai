@@ -12,11 +12,14 @@ import { estimateSeedanceCostJpy } from "@/lib/credits/seedance-cost-estimate";
 import { estimateCostJpy, type CostSample } from "@/lib/credits/empirical-cost-estimate";
 import {
   RESOLUTIONS,
-  DURATIONS,
   ASPECT_RATIOS,
   ADAPTIVE_ASPECT_RATIO,
   GENERATION_MODES,
   GENERATION_MODE_LABELS,
+  DURATION_MIN_SECONDS,
+  DURATION_MAX_SECONDS,
+  DEFAULT_DURATION_SECONDS,
+  clampDurationSeconds,
   type GenerationMode,
 } from "@/lib/generation/options";
 import { referenceImageTag, referenceVideoTag } from "@/lib/generation/mention";
@@ -28,9 +31,25 @@ import { referenceImageTag, referenceVideoTag } from "@/lib/generation/mention";
 
 interface GenerationOptionLimits {
   allowedResolutions: string[];
-  allowedDurations: number[];
+  // 動画長は1秒刻みのスライダーで選ぶため、許可リストではなく下限・上限で受け取る
+  minDurationSeconds: number;
+  maxDurationSeconds: number;
   allowedAspectRatios: string[];
   allowedGenerationModes: string[];
+}
+
+// /api/generate/options はエラー時に {error} を返すため、形にそぐわないレスポンスを
+// そのまま制限として採用しない(採用すると allowedXxx が undefined になり描画時に落ちる)。
+function isGenerationOptionLimits(value: unknown): value is GenerationOptionLimits {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    Array.isArray(v.allowedResolutions) &&
+    typeof v.minDurationSeconds === "number" &&
+    typeof v.maxDurationSeconds === "number" &&
+    Array.isArray(v.allowedAspectRatios) &&
+    Array.isArray(v.allowedGenerationModes)
+  );
 }
 
 interface PricingRule {
@@ -55,7 +74,7 @@ export function GenerationForm() {
   const [firstFrameImages, setFirstFrameImages] = useState<UploadedImage[]>([]);
   const [endFrameImages, setEndFrameImages] = useState<UploadedImage[]>([]);
   const [resolution, setResolution] = useState<(typeof RESOLUTIONS)[number]>("720p");
-  const [durationSeconds, setDurationSeconds] = useState<(typeof DURATIONS)[number]>(5);
+  const [durationSeconds, setDurationSeconds] = useState<number>(DEFAULT_DURATION_SECONDS);
   const [aspectRatio, setAspectRatio] = useState<(typeof ASPECT_RATIOS)[number]>("16:9");
   const [generateAudio, setGenerateAudio] = useState(true);
   const [batchSize, setBatchSize] = useState(1);
@@ -80,7 +99,7 @@ export function GenerationForm() {
       .then(([rules, balanceRes, limits, samples]) => {
         setPricingRules(rules);
         setBalance(balanceRes.creditBalance);
-        setOptionLimits(limits);
+        setOptionLimits(isGenerationOptionLimits(limits) ? limits : null);
         setCostSamples(Array.isArray(samples) ? samples : []);
       })
       .finally(() => setPricingLoading(false));
@@ -90,10 +109,14 @@ export function GenerationForm() {
     () => RESOLUTIONS.filter((r) => optionLimits?.allowedResolutions.includes(r) ?? true),
     [optionLimits]
   );
-  const allowedDurations = useMemo(
-    () => DURATIONS.filter((d) => optionLimits?.allowedDurations.includes(d) ?? true),
-    [optionLimits]
-  );
+  // 許可設定の取得前・取得失敗時はSeedanceの上下限を仮に使う(送信時はサーバー側で再検証される)
+  const durationMin = optionLimits?.minDurationSeconds ?? DURATION_MIN_SECONDS;
+  const durationMax = optionLimits?.maxDurationSeconds ?? DURATION_MAX_SECONDS;
+  const durationFixed = durationMin >= durationMax;
+  // スライダーの選択済み部分の塗り(0〜100%)。範囲が1点しかない場合は全塗りにする。
+  const durationFillPercent = durationFixed
+    ? 100
+    : ((durationSeconds - durationMin) / (durationMax - durationMin)) * 100;
   const allowedAspectRatios = useMemo(
     () => ASPECT_RATIOS.filter((a) => optionLimits?.allowedAspectRatios.includes(a) ?? true),
     [optionLimits]
@@ -109,8 +132,10 @@ export function GenerationForm() {
     if (allowedResolutions.length > 0 && !allowedResolutions.includes(resolution)) {
       setResolution(allowedResolutions[0]);
     }
-    if (allowedDurations.length > 0 && !allowedDurations.includes(durationSeconds)) {
-      setDurationSeconds(allowedDurations[0]);
+    // 動画長は離散選択ではないため、許可範囲外なら最も近い端へ寄せる
+    const clamped = clampDurationSeconds(durationSeconds, durationMin, durationMax);
+    if (clamped !== durationSeconds) {
+      setDurationSeconds(clamped);
     }
     if (allowedAspectRatios.length > 0 && !allowedAspectRatios.includes(aspectRatio)) {
       setAspectRatio(allowedAspectRatios[0]);
@@ -119,7 +144,7 @@ export function GenerationForm() {
     if (allowedModes.length > 0 && !allowedModes.includes(mode)) {
       setMode(allowedModes[0]);
     }
-  }, [optionLimits, allowedResolutions, allowedDurations, allowedAspectRatios, allowedModes, resolution, durationSeconds, aspectRatio, mode]);
+  }, [optionLimits, allowedResolutions, durationMin, durationMax, allowedAspectRatios, allowedModes, resolution, durationSeconds, aspectRatio, mode]);
 
   // リロード後も直近の生成状況(生成中/生成済み)を表示するため、初回マウント時に直近ジョブを読み込む
   useEffect(() => {
@@ -141,7 +166,7 @@ export function GenerationForm() {
         if (!job) return;
         setPrompt(job.prompt ?? "");
         setResolution(job.resolution ?? "720p");
-        setDurationSeconds(job.durationSeconds ?? 5);
+        setDurationSeconds(job.durationSeconds ?? DEFAULT_DURATION_SECONDS);
         setGenerateAudio(job.generateAudio ?? true);
 
         // 先頭フレーム画像の有無で生成モードを一意に判定できる
@@ -385,7 +410,7 @@ export function GenerationForm() {
           <p className="mt-1 text-right text-xs text-neutral-500">{prompt.length}/5000</p>
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="mb-2 block text-sm font-medium text-neutral-300">解像度</label>
             <select
@@ -401,24 +426,10 @@ export function GenerationForm() {
             </select>
           </div>
           <div>
-            <label className="mb-2 block text-sm font-medium text-neutral-300">長さ(秒)</label>
-            <select
-              value={durationSeconds}
-              onChange={(e) => setDurationSeconds(Number(e.target.value) as typeof durationSeconds)}
-              className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
-            >
-              {allowedDurations.map((d) => (
-                <option key={d} value={d}>
-                  {d}秒
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
             <label className="mb-2 block text-sm font-medium text-neutral-300">アスペクト比</label>
             {isImageMode ? (
               // Seedance 2.5は先頭フレーム画像のアスペクト比を自動継承し ratio は adaptive 固定。
-              // 3カラムグリッドはスマートフォン幅でも維持されるため、折り返して隣のselectと
+              // 2カラムグリッドはスマートフォン幅でも維持されるため、折り返して隣のselectと
               // 高さがずれないよう短い文言にし、説明はグリッド下の補助行に置く。
               <p className="rounded-md border border-dashed border-neutral-800 px-3 py-2 text-sm text-neutral-500">
                 自動
@@ -436,6 +447,40 @@ export function GenerationForm() {
                 ))}
               </select>
             )}
+          </div>
+        </div>
+
+        {/* 動画長は1秒刻み。選択肢が最大27個になりselectでは扱いづらいためスライダーにする */}
+        <div>
+          <div className="mb-2 flex items-baseline justify-between">
+            <label htmlFor="duration-slider" className="text-sm font-medium text-neutral-300">
+              長さ
+            </label>
+            <span className="text-sm font-medium tabular-nums text-neutral-100">
+              {durationSeconds}秒{durationFixed && "(固定)"}
+            </span>
+          </div>
+          <input
+            id="duration-slider"
+            type="range"
+            min={durationMin}
+            max={durationMax}
+            step={1}
+            value={durationSeconds}
+            disabled={durationFixed}
+            onChange={(e) =>
+              setDurationSeconds(
+                clampDurationSeconds(Number(e.target.value), durationMin, durationMax)
+              )
+            }
+            style={{
+              background: `linear-gradient(to right, #a3a3a3 ${durationFillPercent}%, #262626 ${durationFillPercent}%)`,
+            }}
+            className="duration-slider"
+          />
+          <div className="mt-1 flex justify-between text-xs text-neutral-500">
+            <span>{durationMin}秒</span>
+            <span>{durationMax}秒</span>
           </div>
         </div>
 

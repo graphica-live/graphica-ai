@@ -13,7 +13,8 @@ interface Staff {
   isActive: boolean;
   creditBalance: number;
   allowedResolutions: string[];
-  allowedDurations: number[];
+  minDurationSeconds: number;
+  maxDurationSeconds: number;
   allowedAspectRatios: string[];
   allowedGenerationModes: string[];
 }
@@ -68,7 +69,8 @@ export function StaffDetail({ staffId }: { staffId: string }) {
         <GenerationLimitsForm
           staffId={staff.id}
           allowedResolutions={staff.allowedResolutions}
-          allowedDurations={staff.allowedDurations}
+          minDurationSeconds={staff.minDurationSeconds}
+          maxDurationSeconds={staff.maxDurationSeconds}
           allowedAspectRatios={staff.allowedAspectRatios}
           allowedGenerationModes={staff.allowedGenerationModes}
           onSaved={load}

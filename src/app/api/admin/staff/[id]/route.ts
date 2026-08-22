@@ -2,15 +2,56 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin, ForbiddenError, UnauthorizedError } from "@/lib/admin/guard";
 import { prisma } from "@/lib/prisma";
-import { RESOLUTIONS, DURATIONS, ASPECT_RATIOS, GENERATION_MODES } from "@/lib/generation/options";
+import {
+  RESOLUTIONS,
+  ASPECT_RATIOS,
+  GENERATION_MODES,
+  DURATION_MIN_SECONDS,
+  DURATION_MAX_SECONDS,
+} from "@/lib/generation/options";
 
-const patchSchema = z.object({
-  isActive: z.boolean().optional(),
-  allowedResolutions: z.array(z.enum(RESOLUTIONS)).min(1).optional(),
-  allowedDurations: z.array(z.number().int().refine((d) => (DURATIONS as readonly number[]).includes(d))).min(1).optional(),
-  allowedAspectRatios: z.array(z.enum(ASPECT_RATIOS)).min(1).optional(),
-  allowedGenerationModes: z.array(z.enum(GENERATION_MODES)).min(1).optional(),
-});
+// 未知キーを黙って無視すると、旧クライアントが廃止済みの allowedDurations を送っても
+// 200になり「保存できたのに反映されない」状態になるため strict にする。
+const patchSchema = z
+  .strictObject({
+    isActive: z.boolean().optional(),
+    allowedResolutions: z.array(z.enum(RESOLUTIONS)).min(1).optional(),
+    minDurationSeconds: z
+      .number()
+      .int()
+      .min(DURATION_MIN_SECONDS)
+      .max(DURATION_MAX_SECONDS)
+      .optional(),
+    maxDurationSeconds: z
+      .number()
+      .int()
+      .min(DURATION_MIN_SECONDS)
+      .max(DURATION_MAX_SECONDS)
+      .optional(),
+    allowedAspectRatios: z.array(z.enum(ASPECT_RATIOS)).min(1).optional(),
+    allowedGenerationModes: z.array(z.enum(GENERATION_MODES)).min(1).optional(),
+  })
+  .superRefine((body, ctx) => {
+    const hasMin = body.minDurationSeconds !== undefined;
+    const hasMax = body.maxDurationSeconds !== undefined;
+    // 片方だけの更新を許すとDBの既存値と突き合わせないと min <= max を保証できないため、
+    // 動画長の範囲は常に両方セットで受け取る。
+    if (hasMin !== hasMax) {
+      ctx.addIssue({
+        code: "custom",
+        message: "動画長の下限と上限は同時に指定してください",
+        path: ["minDurationSeconds"],
+      });
+      return;
+    }
+    if (hasMin && hasMax && body.minDurationSeconds! > body.maxDurationSeconds!) {
+      ctx.addIssue({
+        code: "custom",
+        message: "動画長の下限は上限以下にしてください",
+        path: ["minDurationSeconds"],
+      });
+    }
+  });
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   try {
@@ -45,7 +86,11 @@ function handleError(err: unknown) {
     return NextResponse.json({ error: err.message }, { status: 403 });
   }
   if (err instanceof z.ZodError) {
-    return NextResponse.json({ error: err.issues }, { status: 400 });
+    // 呼び出し元(管理画面のフォーム)はerrorを文字列として表示するため、issues配列のまま返さない
+    return NextResponse.json(
+      { error: err.issues.map((i) => i.message).join(" / ") },
+      { status: 400 }
+    );
   }
   console.error(err);
   return NextResponse.json({ error: "内部エラーが発生しました" }, { status: 500 });

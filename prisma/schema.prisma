@@ -41,7 +41,12 @@ model User {
 
   // 生成フォームで選択可能な項目の制限（チェック済みのもののみ選択可）
   allowedResolutions  String[] @default(["480p"])
-  allowedDurations    Int[]    @default([5])
+  // 生成できる動画長の範囲（秒）。Seedance 2.5 の duration は 4〜30 の整数で、
+  // 生成フォームは1秒刻みのスライダーで選ばせるため、許可リスト（旧 allowedDurations）では
+  // 最大27要素になり管理画面が破綻する。そのため下限・上限の2値で保持する。
+  // DB側に 4 <= min <= max <= 30 のCHECK制約を持たせている（migration参照）。
+  minDurationSeconds  Int      @default(5)
+  maxDurationSeconds  Int      @default(5)
   allowedAspectRatios String[] @default(["4:3"])
   // 利用できる生成モード（reference: テキスト・参照から生成 / image: 画像から生成）。
   // 既存ユーザーは両モードを使えていたため、既定は両方許可とする。
