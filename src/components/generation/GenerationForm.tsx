@@ -506,7 +506,7 @@ export function GenerationForm() {
               href="/history"
               className="shrink-0 text-xs text-neutral-400 underline-offset-4 hover:text-neutral-100 hover:underline"
             >
-              生成履歴をすべて見る →
+              全ての生成履歴を見る →
             </Link>
           </div>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">

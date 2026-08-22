@@ -14,10 +14,18 @@ export async function GET(req: Request) {
     const user = await requireUser();
     const { searchParams } = new URL(req.url);
     const cursor = searchParams.get("cursor") ?? undefined;
+    // ピン止めした生成履歴ページからは pinned=1 で絞り込む
+    const pinnedOnly = searchParams.get("pinned") === "1";
 
     const jobs = await prisma.generationJob.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
+      where: {
+        userId: user.id,
+        ...(pinnedOnly ? { isPinned: true } : {}),
+      },
+      // ピン一覧も生成日時順にする。ソートキーがピン操作で変化しないため、
+      // 一覧を開いたままピンを解除してもcursorページングの境界がずれない。
+      // idはタイブレーカー。
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: PAGE_SIZE + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });

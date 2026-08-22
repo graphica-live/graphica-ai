@@ -140,6 +140,10 @@ model GenerationJob {
   videoObjectKey     String?
   thumbnailObjectKey String?
 
+  // お気に入り(ピン止め)。並び順は「全ての生成履歴」と揃えてcreatedAt順にするため、
+  // ピン時刻ではなくフラグで持つ(cursorページングのソートキーを不変に保つ)。
+  isPinned Boolean @default(false)
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   startedAt   DateTime?
@@ -150,6 +154,7 @@ model GenerationJob {
   creditTx CreditTransaction[]
 
   @@index([userId, createdAt])
+  @@index([userId, isPinned, createdAt])
   @@index([status])
   @@index([batchId])
 }

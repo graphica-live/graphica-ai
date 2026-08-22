@@ -52,7 +52,14 @@ export function AccountMenu({
             className="block px-4 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
             onClick={() => setOpen(false)}
           >
-            生成履歴
+            全ての生成履歴
+          </Link>
+          <Link
+            href="/history/pinned"
+            className="block px-4 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
+            onClick={() => setOpen(false)}
+          >
+            ピン止めした生成履歴
           </Link>
           <Link
             href="/settings"
