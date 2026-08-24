@@ -6,6 +6,7 @@ import { ImageUploadField, type UploadedImage } from "../ImageUploadField";
 import { VideoUploadField, type UploadedVideo } from "../VideoUploadField";
 import { AudioUploadField, type UploadedAudio } from "../AudioUploadField";
 import { CostEstimate } from "../CostEstimate";
+import { MentionTextarea, type MentionCandidate } from "../MentionTextarea";
 import { H3ModeTabs } from "./H3ModeTabs";
 import type { GenerationOptionLimits } from "../option-limits";
 import { estimateGenerationCostJpy } from "@/lib/credits/cost";
@@ -154,6 +155,32 @@ export function MiniMaxH3Form({
   const endFrame = endFrameImages[0] ?? null;
   const referenceCount =
     referenceImages.length + referenceVideos.length + referenceAudios.length;
+
+  // Seedance と同じ `@` 操作で参照素材を指し示せるようにする。ただし H3 には
+  // メンションタグの仕様が無いため、挿入されるのは `@image1` ではなく「画像1」
+  // というプレーンテキストで、そのままプロンプトとして送信される。
+  // 日本語IMEでは `@` の直後にローマ字が残ることがあるため、絞り込みキーには
+  // 表示ラベルに加えて image1 / video1 / audio1 と番号だけの形も持たせる。
+  const mentionCandidates = useMemo<MentionCandidate[]>(() => {
+    if (!isReferenceMode) return [];
+    return [
+      ...referenceImages.map((image, i) => ({
+        tag: imageLabel(i),
+        filterKeys: [imageLabel(i), `image${i + 1}`, `${i + 1}`],
+        previewUrl: image.previewUrl,
+      })),
+      ...referenceVideos.map((video, i) => ({
+        tag: videoLabel(i),
+        filterKeys: [videoLabel(i), `video${i + 1}`, `${i + 1}`],
+        previewUrl: video.previewUrl,
+      })),
+      // 参照音声はサムネイルを持たないため previewUrl を渡さない
+      ...referenceAudios.map((_, i) => ({
+        tag: audioLabel(i),
+        filterKeys: [audioLabel(i), `audio${i + 1}`, `${i + 1}`],
+      })),
+    ];
+  }, [isReferenceMode, referenceImages, referenceVideos, referenceAudios]);
 
   // サーバーが仮押さえするのと同じ式で概算する(@/lib/credits/cost)。
   // 参照動画がある場合はAPI上限の15秒ぶんを満額で仮押さえし、完了時に実尺で精算する。
@@ -320,16 +347,19 @@ export function MiniMaxH3Form({
           <label htmlFor="h3-prompt" className="mb-2 block text-sm font-medium text-neutral-300">
             プロンプト
           </label>
-          <textarea
+          <MentionTextarea
             id="h3-prompt"
             value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
+            onChange={setPrompt}
+            candidates={mentionCandidates}
             maxLength={SPEC.maxPromptLength}
             rows={4}
             placeholder={
               mode === "text"
                 ? "生成したい動画の内容を入力してください"
-                : "素材をどう使ってどんな動画にしたいかを入力してください"
+                : isReferenceMode
+                  ? "素材をどう使ってどんな動画にしたいかを入力してください( @ で「画像1」のような番号を挿入できます)"
+                  : "素材をどう使ってどんな動画にしたいかを入力してください"
             }
             className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm placeholder:text-neutral-600 focus:border-neutral-500 focus:outline-none"
           />

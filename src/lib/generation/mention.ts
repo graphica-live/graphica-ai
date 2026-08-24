@@ -22,6 +22,23 @@ export function normalizeMentionsForDreamina(prompt: string): string {
   return prompt.replace(/@image(\d+)/g, "@Image$1").replace(/@video(\d+)/g, "@Video$1");
 }
 
+/**
+ * 候補が `@` の直後に入力された文字列に前方一致するか。
+ *
+ * `filterKeys` 未指定なら tag から先頭の `@` を除いたものを使う(Seedanceの
+ * `@image1` は `image1` で絞り込む)。MiniMax H3 のように tag が日本語ラベル
+ * (「画像1」)の場合は、ローマ字や番号でも引けるよう filterKeys を明示する。
+ */
+export function matchesMentionQuery(
+  tag: string,
+  filterKeys: readonly string[] | undefined,
+  query: string
+): boolean {
+  const keys = filterKeys ?? [tag.replace(/^@/, "")];
+  const normalized = query.toLowerCase();
+  return keys.some((key) => key.toLowerCase().startsWith(normalized));
+}
+
 export interface MentionQuery {
   /** プロンプト文字列中、`@` の開始位置 */
   start: number;
