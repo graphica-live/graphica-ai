@@ -1,3 +1,11 @@
+import type { VideoModelId } from "@/lib/generation/models";
+import type { ProviderUsage } from "@/lib/video-provider/types";
+import {
+  USD_TO_JPY_RATE as MODEL_USD_TO_JPY_RATE,
+  actualH3CostJpy,
+  estimateH3CostJpy,
+} from "./model-pricing";
+
 // Seedance 2.5 のAPI使用料原価を算出する。
 // スタッフのクレジット残高から引く額は、このファイルの計算結果だけで決まる。
 //
@@ -13,7 +21,8 @@ const USD_PER_MILLION_TOKENS = {
 } as const;
 
 // 概算換算用の固定レート。実勢レートと乖離するため定期的に見直すこと。
-const USD_TO_JPY_RATE = 159;
+// 両モデルで共有するため model-pricing.ts が正本。
+const USD_TO_JPY_RATE = MODEL_USD_TO_JPY_RATE;
 
 const FPS = 24;
 
@@ -81,4 +90,51 @@ export function actualCostJpy(
   if (totalTokens == null) return null;
   if (!Number.isSafeInteger(totalTokens) || totalTokens <= 0) return null;
   return costJpyFromTokens(totalTokens, hasVideoInput);
+}
+
+// ---------------------------------------------------------------------------
+// モデル別ディスパッチ
+//
+// UI・生成API・精算処理はこの2関数だけを呼ぶ。モデルごとの課金式（Seedanceはトークン、
+// H3は秒＋入力画像枚数）を呼び出し側に漏らさないための境界。
+// ---------------------------------------------------------------------------
+
+export interface GenerationCostInput {
+  model: VideoModelId;
+  resolution: string;
+  durationSeconds: number;
+  /** Seedance: 参照動画の有無で単価が変わる / H3: 入力動画ぶんを満額予約するか */
+  hasVideoInput: boolean;
+  /** H3: 6枚目以降の参照画像が従量課金になる */
+  referenceImageCount?: number;
+}
+
+/** 生成前に仮押さえする1本あたりの概算原価(円)。 */
+export function estimateGenerationCostJpy(input: GenerationCostInput): number {
+  if (input.model === "minimax-h3") {
+    return estimateH3CostJpy({
+      resolution: input.resolution,
+      durationSeconds: input.durationSeconds,
+      referenceImageCount: input.referenceImageCount ?? 0,
+      hasReferenceVideo: input.hasVideoInput,
+    });
+  }
+  return estimateCostJpy({
+    resolution: input.resolution,
+    durationSeconds: input.durationSeconds,
+    hasVideoInput: input.hasVideoInput,
+  });
+}
+
+/** プロバイダの報告値から確定原価(円)を返す。信用できない場合はnull。 */
+export function actualGenerationCostJpy(params: {
+  model: VideoModelId;
+  resolution: string;
+  hasVideoInput: boolean;
+  usage: ProviderUsage | null | undefined;
+}): number | null {
+  if (params.model === "minimax-h3") {
+    return actualH3CostJpy(params.resolution, params.usage);
+  }
+  return actualCostJpy(params.usage?.totalTokens, params.hasVideoInput);
 }

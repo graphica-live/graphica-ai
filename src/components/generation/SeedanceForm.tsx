@@ -1,18 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ImageUploadField, type UploadedImage } from "./ImageUploadField";
 import { VideoUploadField, type UploadedVideo } from "./VideoUploadField";
 import { MentionTextarea } from "./MentionTextarea";
 import { CostEstimate } from "./CostEstimate";
-import { JobStatusCard, type JobStatus } from "./JobStatusCard";
-import { estimateCostJpy } from "@/lib/credits/cost";
+import type { GenerationOptionLimits } from "./option-limits";
+import { estimateGenerationCostJpy } from "@/lib/credits/cost";
+import { getModelSpec } from "@/lib/generation/models";
 import {
   RESOLUTIONS,
   ASPECT_RATIOS,
-  GENERATION_MODES,
   GENERATION_MODE_LABELS,
   DURATION_MIN_SECONDS,
   DURATION_MAX_SECONDS,
@@ -21,44 +20,39 @@ import {
   type GenerationMode,
 } from "@/lib/generation/options";
 import { referenceImageTag, referenceVideoTag } from "@/lib/generation/mention";
+import { resolveGenerationMode } from "@/lib/generation/generation-mode";
 
 // BytePlus公式リファレンス上、image-to-video(先頭/末尾フレーム)と
 // omni reference-to-video(参照画像・参照動画)は排他シナリオで併用できない。
 // タブの境界をAPIの排他境界と一致させ、入力段階で混在を起こさないようにする。
 // モードの値とラベルは管理画面の許可設定と共有するため @/lib/generation/options に置く。
 
-interface GenerationOptionLimits {
-  allowedResolutions: string[];
-  // 動画長は1秒刻みのスライダーで選ぶため、許可リストではなく下限・上限で受け取る
-  minDurationSeconds: number;
-  maxDurationSeconds: number;
-  allowedAspectRatios: string[];
-  allowedGenerationModes: string[];
-}
+const MODEL_ID = "seedance-2.5" as const;
+const SPEC = getModelSpec(MODEL_ID);
 
-// /api/generate/options はエラー時に {error} を返すため、形にそぐわないレスポンスを
-// そのまま制限として採用しない(採用すると allowedXxx が undefined になり描画時に落ちる)。
-function isGenerationOptionLimits(value: unknown): value is GenerationOptionLimits {
-  if (typeof value !== "object" || value === null) return false;
-  const v = value as Record<string, unknown>;
-  return (
-    Array.isArray(v.allowedResolutions) &&
-    typeof v.minDurationSeconds === "number" &&
-    typeof v.maxDurationSeconds === "number" &&
-    Array.isArray(v.allowedAspectRatios) &&
-    Array.isArray(v.allowedGenerationModes)
-  );
-}
+// GENERATION_MODES は全モデルを通じたモードの集合なので、そのまま使うと H3 専用の
+// text / firstlast タブが Seedance フォームに出てしまう。必ずモデルのspecと交差させる。
+const MODEL_MODES = SPEC.modes;
 
-const POLL_INTERVAL_MS = 3000;
-const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "CANCELED"]);
-const RECENT_JOBS_LIMIT = 3;
-
-export function GenerationForm() {
+export function SeedanceForm({
+  limits: optionLimits,
+  optionsLoading,
+  balance,
+  mode,
+  onModeChange: setMode,
+  onSubmitted,
+}: {
+  limits: GenerationOptionLimits | null;
+  optionsLoading: boolean;
+  balance: number | null;
+  /** モードはURLクエリで持つため親から受け取る(リロードや戻る操作で選択が変わらない) */
+  mode: GenerationMode;
+  onModeChange: (mode: GenerationMode) => void;
+  onSubmitted: (jobIds: string[]) => void;
+}) {
   const searchParams = useSearchParams();
   const fromJobId = searchParams.get("fromJobId");
 
-  const [mode, setMode] = useState<GenerationMode>("reference");
   const [prompt, setPrompt] = useState("");
   const [referenceImages, setReferenceImages] = useState<UploadedImage[]>([]);
   const [referenceVideos, setReferenceVideos] = useState<UploadedVideo[]>([]);
@@ -71,25 +65,8 @@ export function GenerationForm() {
   const [generateAudio, setGenerateAudio] = useState(true);
   const [batchSize, setBatchSize] = useState(1);
 
-  const [balance, setBalance] = useState<number | null>(null);
-  const [optionsLoading, setOptionsLoading] = useState(true);
-  const [optionLimits, setOptionLimits] = useState<GenerationOptionLimits | null>(null);
-
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [jobs, setJobs] = useState<JobStatus[]>([]);
-
-  useEffect(() => {
-    Promise.all([
-      fetch("/api/credits/balance").then((r) => r.json()),
-      fetch("/api/generate/options").then((r) => r.json()),
-    ])
-      .then(([balanceRes, limits]) => {
-        setBalance(balanceRes.creditBalance);
-        setOptionLimits(isGenerationOptionLimits(limits) ? limits : null);
-      })
-      .finally(() => setOptionsLoading(false));
-  }, []);
 
   const allowedResolutions = useMemo(
     () => RESOLUTIONS.filter((r) => optionLimits?.allowedResolutions.includes(r) ?? true),
@@ -108,7 +85,7 @@ export function GenerationForm() {
     [optionLimits]
   );
   const allowedModes = useMemo(
-    () => GENERATION_MODES.filter((m) => optionLimits?.allowedGenerationModes.includes(m) ?? true),
+    () => MODEL_MODES.filter((m) => optionLimits?.allowedGenerationModes.includes(m) ?? true),
     [optionLimits]
   );
 
@@ -132,17 +109,6 @@ export function GenerationForm() {
     }
   }, [optionLimits, allowedResolutions, durationMin, durationMax, allowedAspectRatios, allowedModes, resolution, durationSeconds, aspectRatio, mode]);
 
-  // リロード後も直近の生成状況(生成中/生成済み)を表示するため、初回マウント時に直近ジョブを読み込む
-  useEffect(() => {
-    fetch("/api/jobs")
-      .then((r) => r.json())
-      .then((data: { items?: JobStatus[] }) => {
-        const recent = (data.items ?? []).slice(0, RECENT_JOBS_LIMIT);
-        if (recent.length === 0) return;
-        setJobs((prev) => (prev.length > 0 ? prev : recent));
-      });
-  }, []);
-
   // 「引用」導線: 過去ジョブの設定をプリフィルする
   useEffect(() => {
     if (!fromJobId) return;
@@ -155,8 +121,9 @@ export function GenerationForm() {
         setDurationSeconds(job.durationSeconds ?? DEFAULT_DURATION_SECONDS);
         setGenerateAudio(job.generateAudio ?? true);
 
-        // 先頭フレーム画像の有無で生成モードを一意に判定できる
-        const isImageMode = Boolean(job.firstFrameImageKey);
+        // generationMode を持たない古いジョブは先頭フレーム画像の有無から導出する
+        const restoredMode = resolveGenerationMode(job);
+        const isImageMode = restoredMode === "image";
         setMode(isImageMode ? "image" : "reference");
 
         if (isImageMode) {
@@ -207,7 +174,12 @@ export function GenerationForm() {
   // 差額は生成完了時にサーバー側で精算される。
   const costPerVideo = useMemo(() => {
     try {
-      return estimateCostJpy({ resolution, durationSeconds, hasVideoInput });
+      return estimateGenerationCostJpy({
+        model: MODEL_ID,
+        resolution,
+        durationSeconds,
+        hasVideoInput,
+      });
     } catch {
       return null;
     }
@@ -234,33 +206,19 @@ export function GenerationForm() {
     [isImageMode, referenceImages, referenceVideos]
   );
 
-  // 実行中ジョブのステータスをポーリングする
-  useEffect(() => {
-    const activeJobIds = jobs.filter((j) => !TERMINAL_STATUSES.has(j.status)).map((j) => j.id);
-    if (activeJobIds.length === 0) return;
-
-    const timer = setInterval(async () => {
-      const updated = await Promise.all(
-        activeJobIds.map((id) => fetch(`/api/jobs/${id}`).then((r) => r.json()))
-      );
-      setJobs((prev) =>
-        prev.map((j) => updated.find((u) => u.id === j.id) ?? j)
-      );
-      // 残高は消費/返還で変動するので合わせて更新する
-      fetch("/api/credits/balance")
-        .then((r) => r.json())
-        .then((res) => setBalance(res.creditBalance));
-    }, POLL_INTERVAL_MS);
-
-    return () => clearInterval(timer);
-  }, [jobs]);
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitError(null);
     setSubmitting(true);
     try {
-      const common = { prompt, resolution, durationSeconds, generateAudio, batchSize };
+      const common = {
+        model: MODEL_ID,
+        prompt,
+        resolution,
+        durationSeconds,
+        generateAudio,
+        batchSize,
+      };
       // モードごとに排他な項目だけを送る(混在するとサーバー側で400になる)
       const payload = isImageMode
         ? {
@@ -284,25 +242,17 @@ export function GenerationForm() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setSubmitError(data.error ?? "生成の開始に失敗しました");
+        setSubmitError(typeof data.error === "string" ? data.error : "生成の開始に失敗しました");
         return;
       }
-      setJobs(
-        (data.jobIds as string[]).map((id) => ({ id, status: "PENDING" as const }))
-      );
-      // キュー発行時点でサーバー側は即座に残高を減算するため、ポーリングを待たず表示を更新する
-      fetch("/api/credits/balance")
-        .then((r) => r.json())
-        .then((res) => setBalance(res.creditBalance));
+      onSubmitted(data.jobIds as string[]);
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-10">
-      <h1 className="text-xl font-semibold">動画生成</h1>
-
+    <>
       {/* 管理画面で1モードしか許可されていない場合、切り替え先が無いのでタブではなくモード名だけ示す */}
       {allowedModes.length > 1 ? (
         <div
@@ -505,27 +455,6 @@ export function GenerationForm() {
           {insufficient ? "クレジット残高が不足しています" : submitting ? "送信中..." : "生成"}
         </button>
       </form>
-
-      {jobs.length > 0 && (
-        <div className="mt-10">
-          {/* 生成履歴への導線がアカウントメニュー内だけだと見つけにくいため、
-              直近ジョブの見出し行にも一覧へのリンクを置く */}
-          <div className="mb-4 flex items-baseline justify-between gap-4">
-            <h2 className="text-sm font-medium text-neutral-300">生成状況</h2>
-            <Link
-              href="/history"
-              className="shrink-0 text-xs text-neutral-400 underline-offset-4 hover:text-neutral-100 hover:underline"
-            >
-              全ての生成履歴を見る →
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            {jobs.map((job) => (
-              <JobStatusCard key={job.id} job={job} />
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
+    </>
   );
 }

@@ -1,10 +1,10 @@
 import { Suspense } from "react";
-import { GenerationForm } from "@/components/generation/GenerationForm";
+import { GenerationWorkspace } from "@/components/generation/GenerationWorkspace";
 
 export default function GeneratePage() {
   return (
     <Suspense fallback={null}>
-      <GenerationForm />
+      <GenerationWorkspace />
     </Suspense>
   );
 }

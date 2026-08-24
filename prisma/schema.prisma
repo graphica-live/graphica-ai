@@ -50,7 +50,14 @@ model User {
   allowedAspectRatios String[] @default(["4:3"])
   // 利用できる生成モード（reference: テキスト・参照から生成 / image: 画像から生成）。
   // 既存ユーザーは両モードを使えていたため、既定は両方許可とする。
+  //
+  // これは Seedance 2.5 専用の制限として扱う。MiniMax H3 のモード(image/text/firstlast/
+  // reference)はここでは制御せず、allowedModels に H3 が含まれていれば全モード利用可とする。
+  // 理由: 旧ブラウザの管理画面フォームはこの配列を全置換するため、H3 用の値を追記すると
+  // 古いタブから保存されただけで消えてしまう。
   allowedGenerationModes String[] @default(["reference", "image"])
+  // 利用できる動画生成モデル。H3 のコスト統制はこのフラグと動画長の範囲で行う。
+  allowedModels          String[] @default(["seedance-2.5", "minimax-h3"])
 
   accounts               Account[]
   sessions               Session[]
@@ -130,14 +137,25 @@ model GenerationJob {
   batchIndex Int    @default(0)
   batchSize  Int    @default(1)
 
-  status        JobStatus @default(PENDING)
-  provider      String    @default("dreamina")
+  status JobStatus @default(PENDING)
+  // どのプロバイダのタスクかを表す不変値。ポーラーはこの値でジョブを振り分ける。
+  // ローリングデプロイ中、自分が知らないproviderのジョブを誤って別APIへ問い合わせないよう、
+  // ポーリング対象を provider で絞る根拠になる（src/lib/jobs/poller.ts）。
+  provider      String  @default("dreamina")
+  // どのモデルで生成したか。課金式・履歴表示・「引用」時のフォーム復元に使う。
+  model         String  @default("seedance-2.5")
   providerJobId String?
-  providerError String?   @db.Text
+  providerError String? @db.Text
+  // プロバイダが返したエラーコード（開発者向け。ユーザーには providerError の文言を出す）
+  providerErrorCode String?
 
+  // 生成モード。DB default を置かない理由は src/lib/generation/generation-mode.ts を参照
+  // （ローリング中の旧コードが作る image ジョブが 'reference' と誤記録されるのを防ぐ）。
+  generationMode     String?
   prompt             String   @db.Text
   referenceImageKeys String[]
   referenceVideoKeys String[] @default([])
+  referenceAudioKeys String[] @default([])
   firstFrameImageKey String?
   endFrameImageKey   String?
   resolution         String
@@ -148,8 +166,12 @@ model GenerationJob {
   creditCost Int
 
   // プロバイダが完了時に報告した実トークン消費量(usage.total_tokens)。
-  // コスト概算表示の実測値ソースとして使う。未報告の場合はnull。
+  // Seedance 2.5 のトークン課金でのみ使う。未報告の場合はnull。
   actualTotalTokens Int?
+  // プロバイダが報告した使用量を正規化して保存したもの（ProviderUsage）。
+  // モデルごとに課金単位が違う（Seedanceはトークン、H3は秒＋入力画像枚数）ため、
+  // 実績の生データはこちらに残す。
+  providerUsage Json?
 
   videoObjectKey     String?
   thumbnailObjectKey String?

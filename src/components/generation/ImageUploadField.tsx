@@ -8,8 +8,22 @@ interface UploadedImage {
   previewUrl: string;
 }
 
-const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/bmp", "image/tiff", "image/gif"];
+const DEFAULT_ALLOWED_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/bmp",
+  "image/tiff",
+  "image/gif",
+];
 const DEFAULT_MAX_IMAGES = 9;
+
+/**
+ * サムネイルの並べ方。
+ * - inline: 80px固定の折り返し(Seedanceフォームの既存レイアウト)
+ * - grid: 画面幅に追従する正方形グリッド。9枚並べてもスマートフォンで崩れない
+ */
+type UploadLayout = "inline" | "grid";
 
 export function ImageUploadField({
   images,
@@ -18,12 +32,24 @@ export function ImageUploadField({
   maxImages = DEFAULT_MAX_IMAGES,
   /** @image1 バッジとメンション説明を表示するか。先頭/末尾フレーム用途では無意味なのでfalseにする */
   showTag = true,
+  allowedTypes = DEFAULT_ALLOWED_TYPES,
+  maxBytes,
+  tagFor = referenceImageTag,
+  hint,
+  layout = "inline",
 }: {
   images: UploadedImage[];
   onChange: (images: UploadedImage[]) => void;
   label?: string;
   maxImages?: number;
   showTag?: boolean;
+  allowedTypes?: readonly string[];
+  maxBytes?: number;
+  /** バッジに出す表記。H3では並び順がそのままAPIの参照順になるため「画像1」等を出す */
+  tagFor?: (index: number) => string;
+  /** 素材が1件以上あるときに出す補助文。未指定ならメンション前提の既定文言 */
+  hint?: string;
+  layout?: UploadLayout;
 }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,9 +57,19 @@ export function ImageUploadField({
   const replaceInputRef = useRef<HTMLInputElement>(null);
   const replaceKeyRef = useRef<string | null>(null);
 
+  const isGrid = layout === "grid";
+  const tileClass = isGrid ? "aspect-square w-full" : "h-20 w-20";
+  const removeButtonClass = isGrid ? "h-7 w-7 text-sm" : "h-5 w-5 text-xs";
+
   async function uploadFile(file: File): Promise<UploadedImage | null> {
-    if (!ALLOWED_TYPES.includes(file.type)) {
+    if (!allowedTypes.includes(file.type)) {
       setError(`未対応のファイル形式です: ${file.name}`);
+      return null;
+    }
+    if (maxBytes !== undefined && file.size > maxBytes) {
+      setError(
+        `ファイルサイズが上限(${Math.round(maxBytes / 1024 / 1024)}MB)を超えています: ${file.name}`
+      );
       return null;
     }
     const presignRes = await fetch("/api/uploads/presign", {
@@ -108,21 +144,28 @@ export function ImageUploadField({
     replaceInputRef.current?.click();
   }
 
+  const defaultHint = showTag
+    ? "プロンプト内で @image1 のように入力すると、対応する画像を参照として指定できます。画像をクリックすると差し替えられます"
+    : "画像をクリックすると差し替えられます";
+
   return (
     <div>
       <p className="mb-2 text-sm font-medium text-neutral-300">
         {label} <span className="text-neutral-500">({images.length}/{maxImages})</span>
       </p>
       {images.length > 0 && (
-        <p className="mb-2 text-xs text-neutral-500">
-          {showTag
-            ? "プロンプト内で @image1 のように入力すると、対応する画像を参照として指定できます。画像をクリックすると差し替えられます"
-            : "画像をクリックすると差し替えられます"}
-        </p>
+        <p className="mb-2 text-xs text-neutral-500">{hint ?? defaultHint}</p>
       )}
-      <div className="flex flex-wrap gap-3">
+      <div
+        className={
+          isGrid ? "grid grid-cols-3 gap-3 sm:grid-cols-4" : "flex flex-wrap gap-3"
+        }
+      >
         {images.map((img, i) => (
-          <div key={img.key} className="group relative h-20 w-20 overflow-hidden rounded-md border border-neutral-700">
+          <div
+            key={img.key}
+            className={`group relative overflow-hidden rounded-md border border-neutral-700 ${tileClass}`}
+          >
             <button
               type="button"
               disabled={uploading}
@@ -137,13 +180,14 @@ export function ImageUploadField({
             </button>
             {showTag && (
               <span className="pointer-events-none absolute bottom-0.5 left-0.5 rounded bg-black/70 px-1 text-[10px] leading-4 text-white">
-                {referenceImageTag(i)}
+                {tagFor(i)}
               </span>
             )}
             <button
               type="button"
               onClick={() => removeImage(img.key)}
-              className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-xs text-white hover:bg-black"
+              aria-label="削除"
+              className={`absolute right-0.5 top-0.5 flex items-center justify-center rounded-full bg-black/70 text-white hover:bg-black ${removeButtonClass}`}
             >
               ×
             </button>
@@ -154,7 +198,7 @@ export function ImageUploadField({
             type="button"
             disabled={uploading}
             onClick={() => inputRef.current?.click()}
-            className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-md border border-dashed border-neutral-700 text-xs text-neutral-500 hover:border-neutral-500 hover:text-neutral-300 disabled:opacity-50"
+            className={`flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-neutral-700 text-xs text-neutral-500 hover:border-neutral-500 hover:text-neutral-300 disabled:opacity-50 ${tileClass}`}
           >
             {uploading ? "..." : "＋ 画像追加"}
           </button>
@@ -163,7 +207,7 @@ export function ImageUploadField({
       <input
         ref={inputRef}
         type="file"
-        accept={ALLOWED_TYPES.join(",")}
+        accept={allowedTypes.join(",")}
         multiple
         className="hidden"
         onChange={(e) => handleFiles(e.target.files)}
@@ -171,7 +215,7 @@ export function ImageUploadField({
       <input
         ref={replaceInputRef}
         type="file"
-        accept={ALLOWED_TYPES.join(",")}
+        accept={allowedTypes.join(",")}
         className="hidden"
         onChange={(e) => handleReplaceFile(e.target.files)}
       />

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { downloadFile } from "@/lib/download";
 import { videoDownloadFilename } from "@/lib/jobs/video-naming";
+import { getModelSpec, isVideoModelId, LEGACY_VIDEO_MODEL } from "@/lib/generation/models";
 
 export interface HistoryJob {
   id: string;
@@ -15,6 +16,8 @@ export interface HistoryJob {
   createdAt: string;
   /** ピン止め(お気に入り)済みかどうか。 */
   isPinned?: boolean;
+  /** 生成に使ったモデル。カラム追加前のジョブには無いので既定はSeedance。 */
+  model?: string;
 }
 
 const STATUS_LABEL: Record<HistoryJob["status"], string> = {
@@ -178,8 +181,11 @@ export function GenerationCard({
     }
   }
 
+  // 生成画面はURLのmodelでフォームを決めるため、引用時もモデルを一緒に渡す
+  const modelId = isVideoModelId(job.model) ? job.model : LEGACY_VIDEO_MODEL;
+
   function handleReuse() {
-    router.push(`/?fromJobId=${job.id}`);
+    router.push(`/?model=${modelId}&fromJobId=${job.id}`);
   }
 
   const pinned = Boolean(job.isPinned);
@@ -249,7 +255,8 @@ export function GenerationCard({
         <PinButton pinned={pinned} onToggle={handleTogglePin} />
       </div>
       <div className="p-3">
-        <p className="line-clamp-2 text-xs text-neutral-400">{job.prompt}</p>
+        <p className="text-[10px] leading-4 text-neutral-500">{getModelSpec(modelId).label}</p>
+        <p className="mt-1 line-clamp-2 text-xs text-neutral-400">{job.prompt}</p>
         <div className="mt-3 flex gap-2">
           <button
             onClick={handleReuse}
