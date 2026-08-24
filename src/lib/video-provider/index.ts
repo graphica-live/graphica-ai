@@ -36,22 +36,24 @@ export function isMiniMaxAvailable(): boolean {
   return process.env.MINIMAX_MOCK_MODE === "1" && !isProduction();
 }
 
-function useMiniMaxMock(): boolean {
+// `use` で始まる名前はReact Hookと誤判定され react-hooks/rules-of-hooks でビルドが落ちるため、
+// `shouldUse` を接頭辞にしている。
+function shouldUseMiniMaxMock(): boolean {
   return process.env.MINIMAX_MOCK_MODE === "1" && !isProduction();
 }
 
 // Dreamina側の判定は既存挙動を変えない（本番でキーが無ければmockになる点も含めて据え置き）。
-function useDreaminaMock(): boolean {
+function shouldUseDreaminaMock(): boolean {
   return process.env.DREAMINA_MOCK_MODE === "1" || !process.env.DREAMINA_API_KEY;
 }
 
 export function getVideoProvider(name: ProviderName): VideoGenerationProvider {
   switch (name) {
     case "minimax":
-      return useMiniMaxMock() ? createMockProvider("minimax") : minimaxProvider;
+      return shouldUseMiniMaxMock() ? createMockProvider("minimax") : minimaxProvider;
     case "dreamina":
     default:
-      return useDreaminaMock() ? createMockProvider("dreamina") : dreaminaProvider;
+      return shouldUseDreaminaMock() ? createMockProvider("dreamina") : dreaminaProvider;
   }
 }
 
