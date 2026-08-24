@@ -12,6 +12,7 @@ interface Staff {
   name: string | null;
   isActive: boolean;
   creditBalance: number;
+  allowedModels: string[];
   allowedResolutions: string[];
   minDurationSeconds: number;
   maxDurationSeconds: number;
@@ -68,6 +69,7 @@ export function StaffDetail({ staffId }: { staffId: string }) {
         <h2 className="mb-3 text-sm font-medium text-neutral-300">生成設定の制限</h2>
         <GenerationLimitsForm
           staffId={staff.id}
+          allowedModels={staff.allowedModels}
           allowedResolutions={staff.allowedResolutions}
           minDurationSeconds={staff.minDurationSeconds}
           maxDurationSeconds={staff.maxDurationSeconds}

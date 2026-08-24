@@ -1,9 +1,12 @@
 import {
   RESOLUTIONS,
   ASPECT_RATIOS,
-  GENERATION_MODES,
   GENERATION_MODE_LABELS,
 } from "@/lib/generation/options";
+import { VIDEO_MODELS, getModelSpec } from "@/lib/generation/models";
+
+// 解像度・生成モードの制限は Seedance 2.5 専用。MiniMax H3 の可否はモデル欄で示す。
+const SEEDANCE_MODES = getModelSpec("seedance-2.5").modes;
 
 // 管理画面の GenerationLimitsForm と同じ選択肢を、閲覧専用で表示する。
 // 全選択肢を並べたうえで許可済みを強調し、利用できない項目は取り消し線で示す。
@@ -37,12 +40,14 @@ function LimitGroup({
 }
 
 export function GenerationLimitsSummary({
+  allowedModels,
   allowedResolutions,
   minDurationSeconds,
   maxDurationSeconds,
   allowedAspectRatios,
   allowedGenerationModes,
 }: {
+  allowedModels: string[];
   allowedResolutions: string[];
   minDurationSeconds: number;
   maxDurationSeconds: number;
@@ -52,15 +57,23 @@ export function GenerationLimitsSummary({
   return (
     <div className="space-y-4 rounded-lg border border-neutral-800 p-6">
       <LimitGroup
-        label="生成モード"
-        options={GENERATION_MODES.map((m) => ({
+        label="利用できるモデル"
+        options={VIDEO_MODELS.map((id) => ({
+          key: id,
+          text: getModelSpec(id).label,
+          allowed: allowedModels.includes(id),
+        }))}
+      />
+      <LimitGroup
+        label="生成モード (Seedance 2.5)"
+        options={SEEDANCE_MODES.map((m) => ({
           key: m,
           text: GENERATION_MODE_LABELS[m],
           allowed: allowedGenerationModes.includes(m),
         }))}
       />
       <LimitGroup
-        label="解像度"
+        label="解像度 (Seedance 2.5)"
         options={RESOLUTIONS.map((r) => ({
           key: r,
           text: r,

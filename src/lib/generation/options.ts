@@ -18,11 +18,18 @@ export function clampDurationSeconds(
 }
 
 // 生成モード。UIのタブ、生成APIの排他検証、管理画面の許可設定で同じ値を使う。
-export const GENERATION_MODES = ["reference", "image"] as const;
+//
+// どのモードをどのモデルで使えるかは `@/lib/generation/models` の VideoModelSpec.modes が
+// 唯一の定義。この配列は「全モデルを通じて存在しうるモードの集合」でしかないため、
+// UIやAPIの選択肢としてこの配列をそのまま使ってはいけない(モデルのspecと交差させる)。
+// text / firstlast は MiniMax H3 専用で、Seedance 2.5 は reference / image のみ。
+export const GENERATION_MODES = ["reference", "image", "text", "firstlast"] as const;
 
 export const GENERATION_MODE_LABELS: Record<GenerationMode, string> = {
   reference: "テキスト・参照から生成",
   image: "画像から生成",
+  text: "テキストから動画",
+  firstlast: "始点・終点指定",
 };
 
 // 先頭フレーム画像から生成する場合(image to video)、Seedance 2.5は先頭フレームの

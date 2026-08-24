@@ -29,6 +29,9 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     const referenceVideoUrls = await Promise.all(
       job.referenceVideoKeys.map((key) => getPresignedDownloadUrl(key))
     );
+    const referenceAudioUrls = await Promise.all(
+      job.referenceAudioKeys.map((key) => getPresignedDownloadUrl(key))
+    );
     // 「引用」導線で image to video ジョブの入力画像を復元するために返す
     const firstFrameImageUrl = job.firstFrameImageKey
       ? await getPresignedDownloadUrl(job.firstFrameImageKey)
@@ -43,6 +46,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       thumbnailUrl,
       referenceImageUrls,
       referenceVideoUrls,
+      referenceAudioUrls,
       firstFrameImageUrl,
       endFrameImageUrl,
     });
@@ -98,6 +102,15 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
 
     if (!job || (job.userId !== user.id && user.role !== "ADMIN")) {
       return NextResponse.json({ error: "見つかりません" }, { status: 404 });
+    }
+
+    // 生成中のジョブを消すと、ポーラーが生成物を保存することもクレジットを返還することも
+    // できなくなり、外部では課金が続いたまま行だけが消える。終端状態になるまで待たせる。
+    if (job.status === "PENDING" || job.status === "PROCESSING") {
+      return NextResponse.json(
+        { error: "生成中の動画は削除できません。完了または失敗するまでお待ちください。" },
+        { status: 409 }
+      );
     }
 
     await deleteObjects([job.videoObjectKey, job.thumbnailObjectKey].filter(

@@ -4,74 +4,24 @@ import { requireUser, UnauthorizedError } from "@/lib/admin/guard";
 import { InsufficientCreditsError } from "@/lib/credits/ledger";
 import { createGenerationBatch } from "@/lib/jobs/create-generation-batch";
 import { prisma } from "@/lib/prisma";
-import {
-  RESOLUTIONS,
-  ASPECT_RATIOS,
-  ADAPTIVE_ASPECT_RATIO,
-  GENERATION_MODES,
-  GENERATION_MODE_LABELS,
-  DURATION_MIN_SECONDS,
-  DURATION_MAX_SECONDS,
-} from "@/lib/generation/options";
-
-// BytePlus公式リファレンスは image-to-video(first/last frame)と omni reference-to-video を
-// "mutually exclusive scenarios and cannot be mixed" と定義している。UIのタブと同じ粒度で
-// mode を受け取り、モードごとに必須項目と併用不可項目を検証する。
-// mode未指定は従来リクエスト互換のため "reference" とみなす。
-const requestSchema = z
-  .object({
-    mode: z.enum(GENERATION_MODES).default("reference"),
-    prompt: z.string().max(5000).default(""),
-    referenceImageKeys: z.array(z.string()).max(9).default([]),
-    referenceVideoKeys: z.array(z.string()).max(10).default([]),
-    firstFrameImageKey: z.string().optional(),
-    endFrameImageKey: z.string().optional(),
-    resolution: z.enum(RESOLUTIONS),
-    // Seedance 2.5 が受け付ける duration の範囲。スタッフごとの範囲制限は別途DBの値で検証する。
-    durationSeconds: z.number().int().min(DURATION_MIN_SECONDS).max(DURATION_MAX_SECONDS),
-    aspectRatio: z.enum(ASPECT_RATIOS).optional(),
-    generateAudio: z.boolean().default(true),
-    batchSize: z.number().int().min(1).max(10).default(1),
-  })
-  .superRefine((body, ctx) => {
-    if (body.mode === "image") {
-      if (!body.firstFrameImageKey) {
-        ctx.addIssue({
-          code: "custom",
-          message: "先頭フレーム画像(firstFrameImageKey)は必須です",
-          path: ["firstFrameImageKey"],
-        });
-      }
-      if (body.referenceImageKeys.length > 0 || body.referenceVideoKeys.length > 0) {
-        ctx.addIssue({
-          code: "custom",
-          message: "画像から生成するモードでは参照画像・参照動画を同時に指定できません",
-          path: ["referenceImageKeys"],
-        });
-      }
-      return;
-    }
-
-    // mode === "reference"
-    if (body.prompt.length < 1) {
-      ctx.addIssue({ code: "custom", message: "プロンプトは必須です", path: ["prompt"] });
-    }
-    if (!body.aspectRatio) {
-      ctx.addIssue({ code: "custom", message: "アスペクト比は必須です", path: ["aspectRatio"] });
-    }
-    if (body.firstFrameImageKey || body.endFrameImageKey) {
-      ctx.addIssue({
-        code: "custom",
-        message: "先頭・末尾フレーム画像は「画像から生成」モードでのみ指定できます",
-        path: ["firstFrameImageKey"],
-      });
-    }
-  });
+import { ADAPTIVE_ASPECT_RATIO, GENERATION_MODE_LABELS } from "@/lib/generation/options";
+import { getModelSpec } from "@/lib/generation/models";
+import { isMiniMaxAvailable } from "@/lib/video-provider";
+import { assertOwnedUploadKeys, ForeignUploadKeyError } from "@/lib/storage/upload-key";
+import { generateRequestSchema } from "./generate-schema";
 
 export async function POST(req: Request) {
   try {
     const user = await requireUser();
-    const body = requestSchema.parse(await req.json());
+    const body = generateRequestSchema.parse(await req.json());
+    const spec = getModelSpec(body.model);
+
+    if (body.model === "minimax-h3" && !isMiniMaxAvailable()) {
+      return NextResponse.json(
+        { error: "MiniMax H3 は現在利用できません。管理者に連絡してください。" },
+        { status: 503 }
+      );
+    }
 
     const limits = await prisma.user.findUniqueOrThrow({
       where: { id: user.id },
@@ -81,29 +31,57 @@ export async function POST(req: Request) {
         maxDurationSeconds: true,
         allowedAspectRatios: true,
         allowedGenerationModes: true,
+        allowedModels: true,
       },
     });
-    if (!limits.allowedGenerationModes.includes(body.mode)) {
+
+    if (!limits.allowedModels.includes(body.model)) {
       return NextResponse.json(
-        {
-          error: `「${GENERATION_MODE_LABELS[body.mode]}」はこのアカウントでは利用できません`,
-        },
+        { error: `「${spec.label}」はこのアカウントでは利用できません` },
         { status: 403 }
       );
     }
-    // 画像から生成する場合、アスペクト比は先頭フレーム画像に追従する adaptive 固定でユーザーが
-    // 選択できないため、許可リスト検証の対象外とする。
-    const aspectRatioAllowed =
-      body.mode === "image" || limits.allowedAspectRatios.includes(body.aspectRatio!);
-    // 動画長はスタッフごとに下限・上限の範囲で制限する(UIのスライダーと同じ境界)
+
+    // 素材キーはクライアントから渡ってくる。他人のアップロードを指定できないよう、
+    // 参照素材とフレーム画像のすべてについて持ち主を検証する。
+    assertOwnedUploadKeys(user.id, [
+      ...body.referenceImageKeys,
+      ...body.referenceVideoKeys,
+      ...(body.model === "minimax-h3" ? body.referenceAudioKeys : []),
+      body.firstFrameImageKey,
+      body.endFrameImageKey,
+    ]);
+
+    // 動画長はスタッフごとに下限・上限の範囲で制限する(UIのスライダーと同じ境界)。
+    // モデル非依存の指標なので H3 にもそのまま適用する。
     const durationAllowed =
       body.durationSeconds >= limits.minDurationSeconds &&
       body.durationSeconds <= limits.maxDurationSeconds;
-    if (
-      !limits.allowedResolutions.includes(body.resolution) ||
-      !durationAllowed ||
-      !aspectRatioAllowed
-    ) {
+
+    // 先頭フレーム画像を使うモードではアスペクト比が画像に追従する adaptive 固定で
+    // ユーザーが選択できないため、許可リスト検証の対象外とする。
+    const usesAdaptiveRatio = body.mode === "image" || body.mode === "firstlast";
+    const aspectRatioAllowed =
+      usesAdaptiveRatio || limits.allowedAspectRatios.includes(body.aspectRatio!);
+
+    if (body.model === "seedance-2.5") {
+      // 生成モードと解像度の許可リストは Seedance 専用の制限として運用する
+      // （H3 の可否は allowedModels で制御する。理由は prisma/schema.prisma のコメント参照）。
+      if (!limits.allowedGenerationModes.includes(body.mode)) {
+        return NextResponse.json(
+          { error: `「${GENERATION_MODE_LABELS[body.mode]}」はこのアカウントでは利用できません` },
+          { status: 403 }
+        );
+      }
+      if (!limits.allowedResolutions.includes(body.resolution)) {
+        return NextResponse.json(
+          { error: "選択した設定はこのアカウントでは利用できません" },
+          { status: 403 }
+        );
+      }
+    }
+
+    if (!durationAllowed || !aspectRatioAllowed) {
       return NextResponse.json(
         { error: "選択した設定はこのアカウントでは利用できません" },
         { status: 403 }
@@ -113,15 +91,19 @@ export async function POST(req: Request) {
     const jobIds = await createGenerationBatch({
       userId: user.id,
       actorUserId: user.impersonatedBy,
+      model: body.model,
+      mode: body.mode,
       prompt: body.prompt,
       referenceImageKeys: body.referenceImageKeys,
       referenceVideoKeys: body.referenceVideoKeys,
+      referenceAudioKeys: body.model === "minimax-h3" ? body.referenceAudioKeys : [],
       firstFrameImageKey: body.firstFrameImageKey,
       endFrameImageKey: body.endFrameImageKey,
       resolution: body.resolution,
       durationSeconds: body.durationSeconds,
-      aspectRatio: body.mode === "image" ? ADAPTIVE_ASPECT_RATIO : body.aspectRatio!,
-      generateAudio: body.generateAudio,
+      aspectRatio: usesAdaptiveRatio ? ADAPTIVE_ASPECT_RATIO : body.aspectRatio!,
+      // H3 は常にネイティブ音声を生成するため、ユーザーの選択肢を持たない
+      generateAudio: body.model === "seedance-2.5" ? body.generateAudio : true,
       batchSize: body.batchSize,
     });
 
@@ -129,6 +111,9 @@ export async function POST(req: Request) {
   } catch (err) {
     if (err instanceof UnauthorizedError) {
       return NextResponse.json({ error: err.message }, { status: 401 });
+    }
+    if (err instanceof ForeignUploadKeyError) {
+      return NextResponse.json({ error: err.message }, { status: 403 });
     }
     if (err instanceof InsufficientCreditsError) {
       return NextResponse.json(

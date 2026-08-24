@@ -4,18 +4,23 @@ import { useEffect, useState } from "react";
 import {
   RESOLUTIONS,
   ASPECT_RATIOS,
-  GENERATION_MODES,
   GENERATION_MODE_LABELS,
   DURATION_MIN_SECONDS,
   DURATION_MAX_SECONDS,
 } from "@/lib/generation/options";
+import { VIDEO_MODELS, getModelSpec } from "@/lib/generation/models";
 
 function toggle<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 }
 
+// 解像度と生成モードの許可設定は Seedance 2.5 専用。MiniMax H3 の可否はモデル欄で制御する
+// (理由は prisma/schema.prisma の allowedGenerationModes のコメントを参照)。
+const SEEDANCE_MODES = getModelSpec("seedance-2.5").modes;
+
 export function GenerationLimitsForm({
   staffId,
+  allowedModels,
   allowedResolutions,
   minDurationSeconds,
   maxDurationSeconds,
@@ -24,6 +29,7 @@ export function GenerationLimitsForm({
   onSaved,
 }: {
   staffId: string;
+  allowedModels: string[];
   allowedResolutions: string[];
   minDurationSeconds: number;
   maxDurationSeconds: number;
@@ -31,6 +37,7 @@ export function GenerationLimitsForm({
   allowedGenerationModes: string[];
   onSaved: () => void;
 }) {
+  const [models, setModels] = useState(allowedModels);
   const [resolutions, setResolutions] = useState(allowedResolutions);
   // 入力途中の空文字をNaN/0と取り違えないよう、秒数は文字列で保持して送信時に数値化する
   const [minDuration, setMinDuration] = useState(String(minDurationSeconds));
@@ -41,12 +48,14 @@ export function GenerationLimitsForm({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setModels(allowedModels);
     setResolutions(allowedResolutions);
     setMinDuration(String(minDurationSeconds));
     setMaxDuration(String(maxDurationSeconds));
     setAspectRatios(allowedAspectRatios);
     setModes(allowedGenerationModes);
   }, [
+    allowedModels,
     allowedResolutions,
     minDurationSeconds,
     maxDurationSeconds,
@@ -66,6 +75,7 @@ export function GenerationLimitsForm({
     parsedMin > parsedMax;
 
   const invalid =
+    models.length === 0 ||
     resolutions.length === 0 ||
     durationInvalid ||
     aspectRatios.length === 0 ||
@@ -88,6 +98,7 @@ export function GenerationLimitsForm({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          allowedModels: models,
           allowedResolutions: resolutions,
           minDurationSeconds: parsedMin,
           maxDurationSeconds: parsedMax,
@@ -112,9 +123,25 @@ export function GenerationLimitsForm({
       className="space-y-4 rounded-lg border border-neutral-800 p-4"
     >
       <div>
-        <p className="mb-2 text-xs text-neutral-500">生成モード</p>
+        <p className="mb-2 text-xs text-neutral-500">利用できるモデル</p>
         <div className="flex flex-wrap gap-x-6 gap-y-1">
-          {GENERATION_MODES.map((m) => (
+          {VIDEO_MODELS.map((id) => (
+            <label key={id} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={models.includes(id)}
+                onChange={() => setModels((prev) => toggle(prev, id))}
+              />
+              {getModelSpec(id).label}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <p className="mb-2 text-xs text-neutral-500">生成モード (Seedance 2.5)</p>
+        <div className="flex flex-wrap gap-x-6 gap-y-1">
+          {SEEDANCE_MODES.map((m) => (
             <label key={m} className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -129,7 +156,7 @@ export function GenerationLimitsForm({
 
       <div className="grid grid-cols-3 gap-4">
         <div>
-          <p className="mb-2 text-xs text-neutral-500">解像度</p>
+          <p className="mb-2 text-xs text-neutral-500">解像度 (Seedance 2.5)</p>
           <div className="space-y-1">
             {RESOLUTIONS.map((r) => (
               <label key={r} className="flex items-center gap-2 text-sm">
@@ -172,7 +199,7 @@ export function GenerationLimitsForm({
             />
           </div>
           <p className="mt-1 text-xs text-neutral-600">
-            {DURATION_MIN_SECONDS}〜{DURATION_MAX_SECONDS}秒
+            {DURATION_MIN_SECONDS}〜{DURATION_MAX_SECONDS}秒(全モデル共通。H3は最大15秒)
           </p>
         </div>
         <div>

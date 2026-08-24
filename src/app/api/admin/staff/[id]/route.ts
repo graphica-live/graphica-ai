@@ -5,10 +5,10 @@ import { prisma } from "@/lib/prisma";
 import {
   RESOLUTIONS,
   ASPECT_RATIOS,
-  GENERATION_MODES,
   DURATION_MIN_SECONDS,
   DURATION_MAX_SECONDS,
 } from "@/lib/generation/options";
+import { VIDEO_MODELS } from "@/lib/generation/models";
 
 // 未知キーを黙って無視すると、旧クライアントが廃止済みの allowedDurations を送っても
 // 200になり「保存できたのに反映されない」状態になるため strict にする。
@@ -29,7 +29,10 @@ const patchSchema = z
       .max(DURATION_MAX_SECONDS)
       .optional(),
     allowedAspectRatios: z.array(z.enum(ASPECT_RATIOS)).min(1).optional(),
-    allowedGenerationModes: z.array(z.enum(GENERATION_MODES)).min(1).optional(),
+    // 解像度・生成モードの許可リストは Seedance 2.5 専用の制限として扱う。
+    // MiniMax H3 の可否は allowedModels 側で制御する（理由は prisma/schema.prisma を参照）。
+    allowedGenerationModes: z.array(z.enum(["reference", "image"])).min(1).optional(),
+    allowedModels: z.array(z.enum(VIDEO_MODELS)).min(1).optional(),
   })
   .superRefine((body, ctx) => {
     const hasMin = body.minDurationSeconds !== undefined;

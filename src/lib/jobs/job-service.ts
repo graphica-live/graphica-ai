@@ -3,21 +3,46 @@ import { prisma } from "@/lib/prisma";
 import { uploadObject } from "@/lib/storage/storage-service";
 import { videoObjectKey as buildVideoObjectKey } from "@/lib/jobs/video-naming";
 import { refundCreditsWithin } from "@/lib/credits/ledger";
-import { actualCostJpy } from "@/lib/credits/cost";
-import type { VideoGenerationStatusResult } from "@/lib/video-provider/types";
+import { actualGenerationCostJpy } from "@/lib/credits/cost";
+import { isVideoModelId, LEGACY_VIDEO_MODEL, type VideoModelId } from "@/lib/generation/models";
+import type { ProviderUsage, VideoGenerationStatusResult } from "@/lib/video-provider/types";
+
+/**
+ * 生成物のダウンロード上限。
+ *
+ * 現在の実装はレスポンス全体をメモリに載せてからバケットへ送るため、想定外に大きな
+ * ファイルが返るとコンテナのメモリを圧迫する。2K/15秒でも数十MB程度に収まるので、
+ * それを大きく超えるものは異常とみなして失敗させる。
+ */
+const MAX_OUTPUT_BYTES = 512 * 1024 * 1024;
 
 async function fetchBytes(url: string): Promise<{ bytes: Buffer; contentType: string }> {
   const res = await fetch(url);
   if (!res.ok) {
-    throw new Error(`生成物のダウンロードに失敗しました: ${url} (status=${res.status})`);
+    throw new Error(`生成物のダウンロードに失敗しました: status=${res.status}`);
+  }
+  const declaredLength = Number(res.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_OUTPUT_BYTES) {
+    throw new Error(
+      `生成物が大きすぎます (${declaredLength} bytes > ${MAX_OUTPUT_BYTES} bytes)`
+    );
   }
   const contentType = res.headers.get("content-type") ?? "application/octet-stream";
   const arrayBuffer = await res.arrayBuffer();
+  if (arrayBuffer.byteLength > MAX_OUTPUT_BYTES) {
+    throw new Error(
+      `生成物が大きすぎます (${arrayBuffer.byteLength} bytes > ${MAX_OUTPUT_BYTES} bytes)`
+    );
+  }
   return { bytes: Buffer.from(arrayBuffer), contentType };
 }
 
+function jobModel(model: string): VideoModelId {
+  return isVideoModelId(model) ? model : LEGACY_VIDEO_MODEL;
+}
+
 /**
- * 仮押さえ額(creditCost)と実トークンから算出した確定原価の差額を精算する。
+ * 仮押さえ額(creditCost)と実使用量から算出した確定原価の差額を精算する。
  *
  * 呼び出し元のトランザクション内で、ジョブを終端状態へ進める条件付き更新が
  * 成功した直後にだけ実行すること。その更新が精算の一回性ガードになっている。
@@ -27,11 +52,16 @@ async function fetchBytes(url: string): Promise<{ bytes: Buffer; contentType: st
 export async function settleCostWithin(
   tx: Prisma.TransactionClient,
   jobId: string,
-  totalTokens?: number
+  usage?: ProviderUsage
 ) {
   const job = await tx.generationJob.findUniqueOrThrow({ where: { id: jobId } });
-  const settled = actualCostJpy(totalTokens, job.referenceVideoKeys.length > 0);
-  // 実トークンが未報告、または値が信用できない場合は仮押さえ額のまま確定させる
+  const settled = actualGenerationCostJpy({
+    model: jobModel(job.model),
+    resolution: job.resolution,
+    hasVideoInput: job.referenceVideoKeys.length > 0,
+    usage,
+  });
+  // 実使用量が未報告、または値が信用できない場合は仮押さえ額のまま確定させる
   if (settled === null) return;
 
   const diff = settled - job.creditCost;
@@ -51,17 +81,11 @@ export async function settleCostWithin(
         balanceAfter: user.creditBalance,
         userId: job.userId,
         generationJobId: job.id,
-        note: "実トークン確定による追加消費",
+        note: "実使用量確定による追加消費",
       },
     });
   } else {
-    await refundCreditsWithin(
-      tx,
-      job.userId,
-      -diff,
-      job.id,
-      "実トークン確定による差額返還"
-    );
+    await refundCreditsWithin(tx, job.userId, -diff, job.id, "実使用量確定による差額返還");
   }
 
   await tx.generationJob.update({
@@ -101,6 +125,7 @@ export async function completeJob(jobId: string, result: VideoGenerationStatusRe
         thumbnailObjectKey,
         completedAt: new Date(),
         actualTotalTokens: result.usage?.totalTokens,
+        providerUsage: result.usage ? (result.usage as Prisma.InputJsonValue) : undefined,
       },
     });
     if (updated.count === 0) {
@@ -110,7 +135,7 @@ export async function completeJob(jobId: string, result: VideoGenerationStatusRe
       return;
     }
 
-    await settleCostWithin(tx, jobId, result.usage?.totalTokens);
+    await settleCostWithin(tx, jobId, result.usage);
   });
 }
 
@@ -121,11 +146,16 @@ export async function completeJob(jobId: string, result: VideoGenerationStatusRe
  * ジョブに限定する。これにより「失敗として記録されたのに残高が戻らない」状態と、
  * ポーラーの再実行や複数インスタンスからの同時呼び出しによる二重返還の双方を防ぐ。
  */
-export async function failJob(jobId: string, errorMessage: string) {
+export async function failJob(jobId: string, errorMessage: string, errorCode?: string) {
   await prisma.$transaction(async (tx) => {
     const updated = await tx.generationJob.updateMany({
       where: { id: jobId, status: { in: ["PENDING", "PROCESSING"] } },
-      data: { status: "FAILED", providerError: errorMessage, completedAt: new Date() },
+      data: {
+        status: "FAILED",
+        providerError: errorMessage,
+        providerErrorCode: errorCode,
+        completedAt: new Date(),
+      },
     });
     // 既に他の経路で終端状態になっている場合は返還済みなので何もしない
     if (updated.count === 0) return;

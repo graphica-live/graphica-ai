@@ -4,6 +4,8 @@ import { v4 as uuidv4 } from "uuid";
 import { requireUser, UnauthorizedError } from "@/lib/admin/guard";
 import { getPresignedUploadUrl } from "@/lib/storage/storage-service";
 
+// アップロードを許可するMIMEタイプ。ここは全モデル分の和集合で、
+// どのモデルでどれを使えるかは VideoModelSpec.media が決める。
 const ALLOWED_CONTENT_TYPES = [
   "image/jpeg",
   "image/png",
@@ -12,6 +14,12 @@ const ALLOWED_CONTENT_TYPES = [
   "image/tiff",
   "image/gif",
   "video/mp4",
+  // MiniMax H3 の参照素材用
+  "video/quicktime",
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/wav",
+  "audio/x-wav",
 ];
 
 const requestSchema = z.object({

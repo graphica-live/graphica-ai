@@ -12,6 +12,7 @@ export default async function CreditsPage() {
       where: { id: userId },
       select: {
         creditBalance: true,
+        allowedModels: true,
         allowedResolutions: true,
         minDurationSeconds: true,
         maxDurationSeconds: true,
@@ -57,6 +58,7 @@ export default async function CreditsPage() {
       <div className="mt-8">
         <h2 className="mb-3 text-sm font-medium text-neutral-300">生成設定の制限</h2>
         <GenerationLimitsSummary
+          allowedModels={user.allowedModels}
           allowedResolutions={user.allowedResolutions}
           minDurationSeconds={user.minDurationSeconds}
           maxDurationSeconds={user.maxDurationSeconds}
