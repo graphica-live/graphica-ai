@@ -1,22 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { creditTransactionLabel } from "@/lib/credits/adjustment";
 
 interface Transaction {
   id: string;
-  type: "GRANT" | "CONSUMPTION" | "REFUND";
+  type: string;
   amount: number;
   balanceAfter: number;
   note: string | null;
   createdAt: string;
   actor: { email: string; name: string | null } | null;
 }
-
-const TYPE_LABEL: Record<Transaction["type"], string> = {
-  GRANT: "付与",
-  CONSUMPTION: "消費",
-  REFUND: "返還",
-};
 
 export function CreditHistoryTable({
   staffId,
@@ -53,13 +48,16 @@ export function CreditHistoryTable({
             <td className="py-2 text-xs text-neutral-400">
               {new Date(tx.createdAt).toLocaleString("ja-JP")}
             </td>
-            <td className="py-2">{TYPE_LABEL[tx.type]}</td>
+            <td className="py-2">{creditTransactionLabel(tx)}</td>
             <td className={`py-2 ${tx.amount >= 0 ? "text-emerald-400" : "text-red-400"}`}>
               {tx.amount >= 0 ? "+" : ""}
               {tx.amount.toLocaleString()}
             </td>
             <td className="py-2">¥{tx.balanceAfter.toLocaleString()}</td>
-            <td className="py-2 text-xs text-neutral-500">{tx.actor?.email ?? tx.note ?? "-"}</td>
+            {/* 管理者向けの表なので、誰が操作したかと理由(メモ)を両方出す */}
+            <td className="py-2 text-xs text-neutral-500">
+              {[tx.actor?.email, tx.note].filter(Boolean).join(" / ") || "-"}
+            </td>
           </tr>
         ))}
       </tbody>
