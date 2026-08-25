@@ -3,21 +3,17 @@
 // 日時はブラウザのタイムゾーンで表示したいため、表示だけをクライアント側で行う。
 // データ取得はページ(サーバーコンポーネント)側で完結しており、この表は閲覧専用。
 
+import { creditTransactionLabel } from "@/lib/credits/adjustment";
+
 interface Transaction {
   id: string;
-  type: "GRANT" | "CONSUMPTION" | "REFUND";
+  type: string;
   amount: number;
   balanceAfter: number;
   note: string | null;
   createdAt: string;
   actor: { email: string; name: string | null } | null;
 }
-
-const TYPE_LABEL: Record<Transaction["type"], string> = {
-  GRANT: "付与",
-  CONSUMPTION: "消費",
-  REFUND: "返還",
-};
 
 export function CreditTransactionTable({ transactions }: { transactions: Transaction[] }) {
   if (transactions.length === 0) {
@@ -43,7 +39,7 @@ export function CreditTransactionTable({ transactions }: { transactions: Transac
               <td className="whitespace-nowrap py-2 text-xs text-neutral-400">
                 {new Date(tx.createdAt).toLocaleString("ja-JP")}
               </td>
-              <td className="whitespace-nowrap py-2">{TYPE_LABEL[tx.type]}</td>
+              <td className="whitespace-nowrap py-2">{creditTransactionLabel(tx)}</td>
               <td
                 className={`whitespace-nowrap py-2 ${
                   tx.amount >= 0 ? "text-emerald-400" : "text-red-400"

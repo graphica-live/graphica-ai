@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CreditGrantForm } from "./CreditGrantForm";
+import { CreditAdjustmentForm } from "./CreditAdjustmentForm";
 import { CreditHistoryTable } from "./CreditHistoryTable";
 import { ImpersonateButton } from "./ImpersonateButton";
 import { GenerationLimitsForm } from "./GenerationLimitsForm";
@@ -50,10 +50,11 @@ export function StaffDetail({ staffId }: { staffId: string }) {
       </div>
 
       <div>
-        <h2 className="mb-3 text-sm font-medium text-neutral-300">クレジット付与</h2>
-        <CreditGrantForm
+        <h2 className="mb-3 text-sm font-medium text-neutral-300">クレジット付与 / 剥奪</h2>
+        <CreditAdjustmentForm
           staffId={staff.id}
-          onGranted={() => {
+          creditBalance={staff.creditBalance}
+          onAdjusted={() => {
             setReloadKey((k) => k + 1);
             load();
           }}
