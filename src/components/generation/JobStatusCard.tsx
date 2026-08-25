@@ -1,6 +1,7 @@
 "use client";
 
 import { cssAspectRatio } from "@/lib/generation/aspect-ratio";
+import { toUserFacingProviderError } from "@/lib/generation/provider-error-message";
 
 interface JobStatus {
   id: string;
@@ -34,8 +35,8 @@ export function JobStatusCard({ job }: { job: JobStatus }) {
         {job.status === "COMPLETED" && job.videoUrl ? (
           <video src={job.videoUrl} controls className="h-full w-full object-contain" />
         ) : job.status === "FAILED" ? (
-          <p className="px-4 text-center text-xs text-red-400">
-            {job.providerError ?? "生成に失敗しました"}
+          <p className="max-h-full overflow-y-auto px-4 py-3 text-center text-xs leading-relaxed text-red-400">
+            {toUserFacingProviderError(job.providerError)}
           </p>
         ) : (
           <div className="flex flex-col items-center gap-2 text-neutral-500">
