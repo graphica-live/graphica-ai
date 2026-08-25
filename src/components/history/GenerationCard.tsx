@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { downloadFile } from "@/lib/download";
 import { videoDownloadFilename } from "@/lib/jobs/video-naming";
 import { getModelSpec, isVideoModelId, LEGACY_VIDEO_MODEL } from "@/lib/generation/models";
+import { cssAspectRatio } from "@/lib/generation/aspect-ratio";
 
 export interface HistoryJob {
   id: string;
@@ -18,6 +19,8 @@ export interface HistoryJob {
   isPinned?: boolean;
   /** 生成に使ったモデル。カラム追加前のジョブには無いので既定はSeedance。 */
   model?: string;
+  /** 生成に使ったアスペクト比。表示枠をこの比率に合わせる(縦動画の切り取りを防ぐ)。 */
+  aspectRatio?: string;
 }
 
 const STATUS_LABEL: Record<HistoryJob["status"], string> = {
@@ -123,7 +126,9 @@ function VideoLightbox({ job, onClose }: { job: HistoryJob; onClose: () => void 
           controls
           autoPlay
           playsInline
-          className="max-h-[80vh] w-full rounded-lg bg-black"
+          // w-full だと縦動画が横幅いっぱいの枠に収まり左右に大きな余白が出る。
+          // 高さ基準で自然な比率のまま最大表示する。
+          className="mx-auto max-h-[80vh] w-auto max-w-full rounded-lg bg-black"
         />
         <div className="flex items-center justify-between gap-3">
           <p className="line-clamp-1 text-xs text-neutral-400">{job.prompt}</p>
@@ -214,10 +219,15 @@ export function GenerationCard({
 
   const canExpand = job.status === "COMPLETED" && Boolean(job.videoUrl);
 
+  // 生成した比率で表示する。adaptive など比率が確定しないジョブは 16:9 の枠に収め、
+  // object-contain で中身を切り取らずに見せる。
+  const ratio = cssAspectRatio(job.aspectRatio);
+
   return (
     <div className="group overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
       <div
-        className={`relative aspect-video bg-neutral-950 ${canExpand ? "cursor-pointer" : ""}`}
+        className={`relative bg-neutral-950 ${ratio ? "" : "aspect-video"} ${canExpand ? "cursor-pointer" : ""}`}
+        style={ratio ? { aspectRatio: ratio } : undefined}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onClick={() => canExpand && setLightboxOpen(true)}
@@ -231,7 +241,7 @@ export function GenerationCard({
               muted
               loop
               playsInline
-              className="h-full w-full object-cover"
+              className="h-full w-full object-contain"
             />
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/30 group-hover:opacity-100">
               <span className="rounded-full bg-black/60 p-2 text-white">
