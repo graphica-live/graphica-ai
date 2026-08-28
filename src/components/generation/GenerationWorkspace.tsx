@@ -33,7 +33,7 @@ export function GenerationWorkspace() {
 
   const [optionsLoading, setOptionsLoading] = useState(true);
   const [optionLimits, setOptionLimits] = useState<GenerationOptionLimits | null>(null);
-  const { balance, jobs, setJobs } = useGenerationJobs();
+  const { balance, jobs, addJobs } = useGenerationJobs();
 
   useEffect(() => {
     fetch("/api/generate/options")
@@ -90,9 +90,9 @@ export function GenerationWorkspace() {
 
   const handleSubmitted = useCallback(
     (jobIds: string[]) => {
-      setJobs(jobIds.map((id) => ({ id, status: "PENDING" as const })));
+      addJobs(jobIds.map((id) => ({ id, status: "PENDING" as const })));
     },
-    [setJobs]
+    [addJobs]
   );
 
   return (

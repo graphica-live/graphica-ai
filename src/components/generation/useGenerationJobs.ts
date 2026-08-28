@@ -66,5 +66,19 @@ export function useGenerationJobs() {
     return () => clearInterval(timer);
   }, [jobs, refreshBalance]);
 
-  return { balance, jobs, setJobs, refreshBalance };
+  /**
+   * 新規生成したジョブを直近ジョブ一覧の先頭に追加する。
+   *
+   * ここを setJobs(newJobs) のように置き換えてしまうと、生成の度に直前まで
+   * 表示されていた直近ジョブが消えて新規分だけになる(上書きされたように見える)。
+   * 既存分を残しつつ先頭に足し、表示件数の上限で切り詰める。
+   */
+  const addJobs = useCallback((newJobs: JobStatus[]) => {
+    setJobs((prev) => {
+      const newIds = new Set(newJobs.map((j) => j.id));
+      return [...newJobs, ...prev.filter((j) => !newIds.has(j.id))].slice(0, RECENT_JOBS_LIMIT);
+    });
+  }, []);
+
+  return { balance, jobs, addJobs, refreshBalance };
 }
